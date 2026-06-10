@@ -1,3 +1,5 @@
+import { ForgotPasswordForm } from "@/features/auth/components/forgot-password-form";
+
 export default function ForgotPasswordPage() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md items-center px-4">
@@ -6,6 +8,7 @@ export default function ForgotPasswordPage() {
         <p className="mt-2 text-sm text-slate-300">
           Request a secure password reset link to recover account access.
         </p>
+        <ForgotPasswordForm />
       </section>
     </main>
   );
