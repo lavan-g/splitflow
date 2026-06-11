@@ -89,6 +89,27 @@ export async function signUpAction(
   });
 
   if (error) {
+    const normalized = error.message.toLowerCase();
+    const isDuplicateUsername =
+      normalized.includes("profiles_username_key") ||
+      normalized.includes("duplicate key value");
+
+    if (isDuplicateUsername) {
+      return {
+        success: false,
+        message: "Username already exists. Please choose a different username.",
+        showCreateAccountCta: false,
+      };
+    }
+
+    if (normalized.includes("user already registered")) {
+      return {
+        success: false,
+        message: "This Gmail is already registered. Please log in instead.",
+        showCreateAccountCta: false,
+      };
+    }
+
     return {
       success: false,
       message: error.message,
