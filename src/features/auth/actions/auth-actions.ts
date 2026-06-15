@@ -35,14 +35,21 @@ export async function signInAction(
   });
 
   if (error) {
-    const isInvalidCredentials = error.message
-      .toLowerCase()
-      .includes("invalid login credentials");
+    const normalized = error.message.toLowerCase();
 
-    if (isInvalidCredentials) {
+    if (normalized.includes("email not confirmed")) {
       return {
         success: false,
-        message: "Couldn't find your account. Please create an account first.",
+        message:
+          "Your email is not verified yet. Please check your inbox and click the confirmation link.",
+        showCreateAccountCta: false,
+      };
+    }
+
+    if (normalized.includes("invalid login credentials")) {
+      return {
+        success: false,
+        message: "Incorrect password. If you don't have an account yet, create one.",
         showCreateAccountCta: true,
       };
     }

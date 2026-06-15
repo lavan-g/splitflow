@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AuthFeedbackToast } from "@/features/auth/components/auth-feedback-toast";
 import { resetPasswordSchema } from "@/features/auth/schemas/auth-schemas";
@@ -13,16 +13,74 @@ type FeedbackState = {
   message: string;
 };
 
+type SessionState = "checking" | "ready" | "invalid";
+
 export function ResetPasswordForm() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
+  const [sessionState, setSessionState] = useState<SessionState>("checking");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [confirmTouched, setConfirmTouched] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+
+  useEffect(() => {
+    let settled = false;
+
+    function markReady() {
+      if (!settled) {
+        settled = true;
+        setSessionState("ready");
+      }
+    }
+
+    function markInvalid() {
+      if (!settled) {
+        settled = true;
+        setSessionState("invalid");
+      }
+    }
+
+    // PKCE flow: Supabase redirects with ?code= in the query string.
+    const code = new URLSearchParams(window.location.search).get("code");
+    if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+        if (!error && data.session) {
+          markReady();
+        } else {
+          markInvalid();
+        }
+      });
+      return;
+    }
+
+    // Implicit flow: tokens arrive in the URL hash (#access_token=...).
+    // The Supabase browser client processes these automatically and fires
+    // PASSWORD_RECOVERY on the auth state listener.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === "PASSWORD_RECOVERY" && session) {
+          markReady();
+        }
+      },
+    );
+
+    // Fallback: if there is already a valid session (e.g. page reload after
+    // the hash was already consumed), accept it.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        markReady();
+      } else {
+        // Give the auth state listener a moment to fire before giving up.
+        setTimeout(() => markInvalid(), 3000);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase]);
 
   const isPasswordInvalid = passwordTouched && password.length < 8;
   const doPasswordsMismatch =
@@ -50,19 +108,6 @@ export function ResetPasswordForm() {
       return;
     }
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session) {
-      setFeedback({
-        success: false,
-        message: "Reset link is invalid or expired. Please request a new link.",
-      });
-      setIsSubmitting(false);
-      return;
-    }
-
     const { error } = await supabase.auth.updateUser({
       password: parsed.data.password,
     });
@@ -78,6 +123,31 @@ export function ResetPasswordForm() {
 
     await supabase.auth.signOut();
     router.replace("/login");
+  }
+
+  if (sessionState === "checking") {
+    return (
+      <p className="mt-6 text-center text-sm text-slate-400">
+        Verifying your reset link…
+      </p>
+    );
+  }
+
+  if (sessionState === "invalid") {
+    return (
+      <div className="mt-6 space-y-4 text-center">
+        <p className="text-sm text-rose-300">
+          This reset link is invalid or has already been used. Please request a
+          new one.
+        </p>
+        <Link
+          href="/forgot-password"
+          className="inline-block rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500"
+        >
+          Request new link
+        </Link>
+      </div>
+    );
   }
 
   return (
