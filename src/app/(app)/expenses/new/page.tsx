@@ -9,57 +9,56 @@ export default async function NewExpensePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect("/login");
-  }
+  if (!user) redirect("/login");
 
-  const { data: memberships } = await supabase
+  // Fetch all groups the user belongs to
+  const { data: memberRows } = await supabase
     .from("group_members")
     .select("group_id")
     .eq("user_id", user.id);
 
-  const groupIds = Array.from(new Set((memberships ?? []).map((membership) => membership.group_id)));
+  const groupIds = (memberRows ?? []).map((r) => r.group_id);
 
-  const [{ data: groups }, { data: groupMemberRows }] =
-    groupIds.length > 0
-      ? await Promise.all([
-          supabase
-            .from("groups")
-            .select("id, name, group_code")
-            .in("id", groupIds)
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("group_members")
-            .select("group_id, user_id")
-            .in("group_id", groupIds),
-        ])
-      : [{ data: [] }, { data: [] }];
+  if (groupIds.length === 0) {
+    return (
+      <main className="mx-auto w-full max-w-3xl px-4 py-8">
+        <div className="glass-card rounded-2xl p-6">
+          <h1 className="text-2xl font-semibold text-white">Add Expense</h1>
+          <p className="mt-3 text-sm text-slate-400">
+            You need to be in at least one group before adding an expense.{" "}
+            <a href="/groups" className="text-indigo-300 underline underline-offset-2">
+              Create or join a group
+            </a>
+            .
+          </p>
+        </div>
+      </main>
+    );
+  }
 
-  const memberUserIds = Array.from(
-    new Set((groupMemberRows ?? []).map((member) => member.user_id)),
-  );
-  const { data: profiles } =
-    memberUserIds.length > 0
-      ? await supabase
-          .from("profiles")
-          .select("user_id, full_name, username")
-          .in("user_id", memberUserIds)
-      : { data: [] };
+  const { data: groups } = await supabase
+    .from("groups")
+    .select("id, name")
+    .in("id", groupIds)
+    .order("created_at", { ascending: false });
 
-  const profileMap = new Map((profiles ?? []).map((profile) => [profile.user_id, profile]));
+  // Fetch all members of those groups with profiles
+  const { data: memberProfiles } = await supabase
+    .from("group_members")
+    .select("group_id, user_id, profiles(full_name, username)")
+    .in("group_id", groupIds);
 
   const groupsWithMembers = (groups ?? []).map((group) => ({
     id: group.id,
     name: group.name,
-    groupCode: group.group_code,
-    members: (groupMemberRows ?? [])
-      .filter((row) => row.group_id === group.id)
-      .map((row) => {
-        const profile = profileMap.get(row.user_id);
+    members: (memberProfiles ?? [])
+      .filter((mp) => mp.group_id === group.id)
+      .map((mp) => {
+        const profile = Array.isArray(mp.profiles) ? mp.profiles[0] : mp.profiles;
         return {
-          userId: row.user_id,
-          fullName: profile?.full_name ?? row.user_id,
-          username: profile?.username ?? "unknown",
+          userId: mp.user_id,
+          fullName: profile?.full_name ?? "Unknown",
+          username: profile?.username ?? "",
         };
       }),
   }));
@@ -67,19 +66,11 @@ export default async function NewExpensePage() {
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8">
       <div className="glass-card rounded-2xl p-6">
-        <h1 className="text-2xl font-semibold text-white">Add Expense</h1>
-        <p className="mt-2 text-sm text-slate-300">
-          Capture title, amount, payer, split strategy, notes, and receipt upload.
+        <h1 className="mb-1 text-2xl font-semibold text-white">Add Expense</h1>
+        <p className="mb-6 text-sm text-slate-400">
+          Fill in the details and choose how to split.
         </p>
-        <div className="mt-5">
-          {groupsWithMembers.length > 0 ? (
-            <CreateExpenseForm groups={groupsWithMembers} currentUserId={user.id} />
-          ) : (
-            <p className="text-sm text-slate-300">
-              Join or create a group first before adding an expense.
-            </p>
-          )}
-        </div>
+        <CreateExpenseForm groups={groupsWithMembers} currentUserId={user.id} />
       </div>
     </main>
   );

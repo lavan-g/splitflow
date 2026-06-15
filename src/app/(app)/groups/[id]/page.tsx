@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
-import { AddMemberForm } from "@/features/groups/components/add-member-form";
 import { GroupBannerActions } from "@/features/groups/components/group-banner-actions";
+import { AddMemberForm } from "@/features/groups/components/add-member-form";
 import { leaveGroupAction } from "@/features/groups/actions/group-actions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -12,118 +12,141 @@ type GroupDetailsPageProps = {
 export default async function GroupDetailsPage({ params }: GroupDetailsPageProps) {
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return null;
-  }
-
-  const { data: group } = await supabase
+  const { data: group, error } = await supabase
     .from("groups")
     .select("id, name, group_code, created_by, created_at")
     .eq("id", id)
-    .maybeSingle();
+    .single();
 
-  if (!group) {
-    notFound();
-  }
+  if (error || !group) notFound();
 
   const { data: memberRows } = await supabase
     .from("group_members")
-    .select("user_id, joined_at")
+    .select("user_id, joined_at, profiles(full_name, username, unique_id)")
     .eq("group_id", id)
     .order("joined_at", { ascending: true });
 
-  const memberUserIds = (memberRows ?? []).map((row) => row.user_id);
-  const { data: profileRows } =
-    memberUserIds.length > 0
-      ? await supabase
-          .from("profiles")
-          .select("user_id, full_name, username, unique_id")
-          .in("user_id", memberUserIds)
-      : { data: [] };
+  const { data: expenses } = await supabase
+    .from("expenses")
+    .select("id, title, amount, created_at, paid_by, profiles!expenses_paid_by_fkey(full_name)")
+    .eq("group_id", id)
+    .order("created_at", { ascending: false })
+    .limit(10);
 
-  const profileMap = new Map((profileRows ?? []).map((profile) => [profile.user_id, profile]));
-  const members = (memberRows ?? []).map((member) => ({
-    userId: member.user_id,
-    joinedAt: member.joined_at,
-    profile: profileMap.get(member.user_id) ?? null,
-  }));
+  const isCreator = group.created_by === user!.id;
+  const isMember = (memberRows ?? []).some((m) => m.user_id === user!.id);
 
-  const isCreator = group.created_by === user.id;
-  const isCurrentMember = memberUserIds.includes(user.id);
+  if (!isMember && !isCreator) notFound();
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-8">
-      <section className="space-y-6">
-        <div className="glass-card rounded-2xl p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold text-white">{group.name}</h1>
-              <p className="mt-2 text-sm text-slate-300">
-                Group code: <span className="font-medium text-indigo-200">{group.group_code}</span>
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <GroupBannerActions
-                groupCode={group.group_code}
-                groupId={group.id}
-                isCreator={isCreator}
-              />
-              {isCurrentMember ? (
-                <form action={leaveGroupAction}>
-                  <input type="hidden" name="groupId" value={group.id} />
-                  <button
-                    type="submit"
-                    disabled={isCreator}
-                    className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isCreator ? "Creator cannot leave" : "Leave group"}
-                  </button>
-                </form>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="glass-card rounded-2xl p-5">
-            <h2 className="text-lg font-semibold text-white">Members</h2>
-            {members.length > 0 ? (
-              <ul className="mt-4 space-y-3">
-                {members.map((member) => (
-                  <li
-                    key={member.userId}
-                    className="rounded-xl border border-white/10 bg-white/5 p-3"
-                  >
-                    <p className="text-sm font-semibold text-white">
-                      {member.profile?.full_name ?? member.userId}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-300">
-                      @{member.profile?.username ?? "unknown"} ·{" "}
-                      {member.profile?.unique_id ?? "N/A"}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-3 text-sm text-slate-300">No members found in this group.</p>
-            )}
-          </div>
-
-          <div className="glass-card rounded-2xl p-5">
-            <h2 className="text-lg font-semibold text-white">Add member</h2>
-            <p className="mt-1 text-sm text-slate-300">
-              Enter the member&apos;s unique username to add them.
+    <main className="mx-auto w-full max-w-4xl px-4 py-8 space-y-6">
+      {/* Banner */}
+      <div className="glass-card rounded-2xl p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-white">{group.name}</h1>
+            <p className="mt-1 text-sm text-slate-400">
+              Code:{" "}
+              <span className="font-mono text-indigo-300">{group.group_code}</span>
+              {" · "}
+              {(memberRows ?? []).length}{" "}
+              {(memberRows ?? []).length === 1 ? "member" : "members"}
             </p>
-            <div className="mt-4">
+          </div>
+          <GroupBannerActions
+            groupId={group.id}
+            groupCode={group.group_code}
+            groupName={group.name}
+            isCreator={isCreator}
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Members */}
+        <div className="glass-card rounded-2xl p-5">
+          <h2 className="mb-3 text-base font-semibold text-white">Members</h2>
+          <ul className="space-y-2">
+            {(memberRows ?? []).map((m) => {
+              const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+              return (
+                <li key={m.user_id} className="flex items-center justify-between text-sm">
+                  <div>
+                    <p className="font-medium text-slate-100">{profile?.full_name ?? "Unknown"}</p>
+                    <p className="text-xs text-slate-400">
+                      @{profile?.username ?? "—"}
+                      {m.user_id === group.created_by ? " · Owner" : ""}
+                    </p>
+                  </div>
+                  {profile?.unique_id && (
+                    <span className="text-xs font-mono text-indigo-300">{profile.unique_id}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+
+          {/* Add member */}
+          <div className="mt-4 border-t border-white/10 pt-4">
+            <p className="mb-2 text-xs text-slate-400">Add member by username</p>
+            <div className="relative">
               <AddMemberForm groupId={group.id} />
             </div>
           </div>
+
+          {/* Leave group */}
+          {!isCreator && (
+            <form
+              action={async () => {
+                "use server";
+                await leaveGroupAction(id);
+              }}
+              className="mt-3"
+            >
+              <button
+                type="submit"
+                className="text-xs text-rose-300 underline underline-offset-2 transition hover:text-rose-200"
+              >
+                Leave group
+              </button>
+            </form>
+          )}
         </div>
-      </section>
+
+        {/* Recent expenses */}
+        <div className="glass-card rounded-2xl p-5">
+          <h2 className="mb-3 text-base font-semibold text-white">Recent expenses</h2>
+          {!expenses || expenses.length === 0 ? (
+            <p className="text-sm text-slate-400">No expenses yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {expenses.map((expense) => {
+                const payer = Array.isArray(expense.profiles)
+                  ? expense.profiles[0]
+                  : expense.profiles;
+                return (
+                  <li key={expense.id} className="flex items-center justify-between text-sm">
+                    <div>
+                      <p className="font-medium text-slate-100">{expense.title}</p>
+                      <p className="text-xs text-slate-400">
+                        Paid by {payer?.full_name ?? "—"}
+                      </p>
+                    </div>
+                    <span className="font-semibold text-indigo-300">
+                      ₹{Number(expense.amount).toFixed(2)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
     </main>
   );
 }
