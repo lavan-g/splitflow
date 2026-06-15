@@ -68,12 +68,6 @@ export default async function AppLayout({
                 >
                   Profile
                 </Link>
-                <Link
-                  href="/profile#account-settings"
-                  className="block rounded-lg px-2 py-1.5 text-slate-100 transition hover:bg-white/10"
-                >
-                  Account settings
-                </Link>
               </div>
 
               <div className="mt-3 border-t border-white/10 pt-3">

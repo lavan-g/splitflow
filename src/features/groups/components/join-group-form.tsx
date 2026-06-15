@@ -44,7 +44,7 @@ export function JoinGroupForm({ initialState, initialGroupCode }: JoinGroupFormP
           required
           value={groupCode}
           onChange={(event) => {
-            setGroupCode(event.target.value);
+            setGroupCode(event.target.value.toUpperCase());
             setGroupCodeTouched(true);
           }}
           onBlur={() => setGroupCodeTouched(true)}

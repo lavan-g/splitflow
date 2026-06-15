@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   addMemberByUsernameSchema,
@@ -101,10 +102,12 @@ export async function joinGroupAction(
     };
   }
 
-  const { data: group, error: groupError } = await supabase
+  // Use admin client so RLS doesn't block non-members from finding a group by code.
+  const adminClient = createSupabaseAdminClient();
+  const { data: group, error: groupError } = await adminClient
     .from("groups")
     .select("id")
-    .eq("group_code", parsed.data.groupCode)
+    .eq("group_code", parsed.data.groupCode.toUpperCase())
     .maybeSingle();
 
   if (groupError || !group) {
