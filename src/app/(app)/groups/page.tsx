@@ -110,7 +110,7 @@ export default async function GroupsPage({ searchParams }: GroupsPageProps) {
                     <GroupCardActions
                       groupId={group.id}
                       groupCode={group.group_code}
-                      groupName={group.name}
+                      isCreator={group.created_by === user!.id}
                     />
                   </li>
                 ))}

@@ -38,7 +38,7 @@ export default async function NewExpensePage() {
 
   const { data: groups } = await supabase
     .from("groups")
-    .select("id, name")
+    .select("id, name, group_code")
     .in("id", groupIds)
     .order("created_at", { ascending: false });
 
@@ -51,6 +51,7 @@ export default async function NewExpensePage() {
   const groupsWithMembers = (groups ?? []).map((group) => ({
     id: group.id,
     name: group.name,
+    groupCode: group.group_code,
     members: (memberProfiles ?? [])
       .filter((mp) => mp.group_id === group.id)
       .map((mp) => {
