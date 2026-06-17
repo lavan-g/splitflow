@@ -28,58 +28,22 @@ export function ResetPasswordForm() {
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
 
   useEffect(() => {
-    let settled = false;
-
-    function markReady() {
-      if (!settled) {
-        settled = true;
-        setSessionState("ready");
-      }
-    }
-
-    function markInvalid() {
-      if (!settled) {
-        settled = true;
-        setSessionState("invalid");
-      }
-    }
-
-    // PKCE flow: Supabase redirects with ?code= in the query string.
-    const code = new URLSearchParams(window.location.search).get("code");
-    if (code) {
-      supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
-        if (!error && data.session) {
-          markReady();
-        } else {
-          markInvalid();
-        }
-      });
+    // Check for an error flag set by the /auth/callback route when exchange failed.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error") === "invalid_link") {
+      setSessionState("invalid");
       return;
     }
 
-    // Implicit flow: tokens arrive in the URL hash (#access_token=...).
-    // The Supabase browser client processes these automatically and fires
-    // PASSWORD_RECOVERY on the auth state listener.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (event === "PASSWORD_RECOVERY" && session) {
-          markReady();
-        }
-      },
-    );
-
-    // Fallback: if there is already a valid session (e.g. page reload after
-    // the hash was already consumed), accept it.
+    // The /auth/callback route already exchanged the code server-side before
+    // redirecting here, so there should be an active session in the cookies.
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        markReady();
+        setSessionState("ready");
       } else {
-        // Give the auth state listener a moment to fire before giving up.
-        setTimeout(() => markInvalid(), 3000);
+        setSessionState("invalid");
       }
     });
-
-    return () => subscription.unsubscribe();
   }, [supabase]);
 
   const isPasswordInvalid = passwordTouched && password.length < 8;
