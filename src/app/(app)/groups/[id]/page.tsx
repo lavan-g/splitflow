@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { GroupBannerActions } from "@/features/groups/components/group-banner-actions";
 import { CopyCodeButton } from "@/features/groups/components/copy-code-button";
-import { AddMemberForm } from "@/features/groups/components/add-member-form";
+import { UserSearchAndAdd } from "@/features/groups/components/user-search-and-add";
 import { leaveGroupAction } from "@/features/groups/actions/group-actions";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -126,10 +126,15 @@ export default async function GroupDetailsPage({ params }: GroupDetailsPageProps
 
           {/* Add member */}
           <div className="mt-4 border-t border-white/10 pt-4">
-            <p className="mb-2 text-xs text-slate-400">Add member by username</p>
-            <div className="relative">
-              <AddMemberForm groupId={group.id} />
-            </div>
+            <p className="mb-2 text-xs text-slate-400">
+              Search by username or{" "}
+              <span className="font-mono text-indigo-300">SF-XXXXXX</span>
+            </p>
+            <UserSearchAndAdd
+              groupId={group.id}
+              currentUserId={user.id}
+              existingMemberIds={members.map((m) => m.user_id)}
+            />
           </div>
 
           {/* Leave group */}
