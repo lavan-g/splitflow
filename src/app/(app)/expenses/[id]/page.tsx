@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { DeleteExpenseButton } from "@/features/expenses/components/delete-expense-button";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type ExpenseDetailsPageProps = {
@@ -10,32 +12,59 @@ type ExpenseDetailsPageProps = {
 export default async function ExpenseDetailsPage({ params }: ExpenseDetailsPageProps) {
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
+  const admin = createSupabaseAdminClient();
 
-  const { data: expense, error } = await supabase
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) notFound();
+
+  const { data: expense, error } = await admin
     .from("expenses")
-    .select(
-      "id, title, amount, notes, receipt_url, created_at, group_id, paid_by, profiles!expenses_paid_by_fkey(full_name, username)",
-    )
+    .select("id, title, amount, notes, receipt_url, created_at, group_id, paid_by")
     .eq("id", id)
     .single();
 
   if (error || !expense) notFound();
 
-  const { data: splits } = await supabase
+  // Verify current user is in the group (access check)
+  const { data: membership } = await admin
+    .from("group_members")
+    .select("user_id")
+    .eq("group_id", expense.group_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!membership) notFound();
+
+  // Fetch splits and profiles separately (no direct FK between splits and profiles)
+  const { data: splits } = await admin
     .from("expense_splits")
-    .select("amount, user_id, profiles(full_name, username)")
+    .select("user_id, amount")
     .eq("expense_id", id);
 
-  const { data: group } = await supabase
+  const splitUserIds = [...new Set((splits ?? []).map((s) => s.user_id))];
+  const allUserIds = [...new Set([...splitUserIds, expense.paid_by])];
+
+  const { data: profiles } = allUserIds.length
+    ? await admin
+        .from("profiles")
+        .select("user_id, full_name, username")
+        .in("user_id", allUserIds)
+    : { data: [] };
+
+  const profileMap = new Map((profiles ?? []).map((p) => [p.user_id, p]));
+
+  const { data: group } = await admin
     .from("groups")
     .select("id, name")
     .eq("id", expense.group_id)
     .single();
 
-  const payer = Array.isArray(expense.profiles) ? expense.profiles[0] : expense.profiles;
+  const payer = profileMap.get(expense.paid_by);
+  const isOwner = expense.paid_by === user.id;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8 space-y-6">
+      {/* Header card */}
       <div className="glass-card rounded-2xl p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -43,22 +72,27 @@ export default async function ExpenseDetailsPage({ params }: ExpenseDetailsPageP
             {group && (
               <Link
                 href={`/groups/${group.id}`}
-                className="mt-1 text-sm text-indigo-300 hover:underline"
+                className="mt-1 inline-block text-sm text-indigo-300 hover:underline"
               >
-                {group.name}
+                ← {group.name}
               </Link>
             )}
           </div>
-          <span className="text-2xl font-bold text-indigo-300">
-            ₹{Number(expense.amount).toFixed(2)}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl font-bold text-indigo-300">
+              ₹{Number(expense.amount).toFixed(2)}
+            </span>
+            {isOwner && (
+              <DeleteExpenseButton expenseId={expense.id} expenseTitle={expense.title} />
+            )}
+          </div>
         </div>
 
         <dl className="mt-5 grid grid-cols-2 gap-4 text-sm">
           <div>
             <dt className="text-slate-400">Paid by</dt>
             <dd className="mt-0.5 font-medium text-slate-100">
-              {payer?.full_name ?? "—"}
+              {isOwner ? "You" : (payer?.full_name ?? "—")}
             </dd>
           </div>
           <div>
@@ -95,7 +129,7 @@ export default async function ExpenseDetailsPage({ params }: ExpenseDetailsPageP
         </dl>
       </div>
 
-      {/* Splits */}
+      {/* Split breakdown */}
       <div className="glass-card rounded-2xl p-5">
         <h2 className="mb-3 text-base font-semibold text-white">Split breakdown</h2>
         {!splits || splits.length === 0 ? (
@@ -103,15 +137,16 @@ export default async function ExpenseDetailsPage({ params }: ExpenseDetailsPageP
         ) : (
           <ul className="space-y-2">
             {splits.map((s) => {
-              const profile = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
+              const profile = profileMap.get(s.user_id);
               return (
-                <li
-                  key={s.user_id}
-                  className="flex items-center justify-between text-sm"
-                >
+                <li key={s.user_id} className="flex items-center justify-between text-sm">
                   <div>
-                    <p className="font-medium text-slate-100">{profile?.full_name ?? "Unknown"}</p>
-                    <p className="text-xs text-slate-400">@{profile?.username ?? "—"}</p>
+                    <p className="font-medium text-slate-100">
+                      {s.user_id === user.id ? "You" : (profile?.full_name ?? "Unknown")}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      @{profile?.username ?? "—"}
+                    </p>
                   </div>
                   <span className="font-mono font-semibold text-indigo-300">
                     ₹{Number(s.amount).toFixed(2)}

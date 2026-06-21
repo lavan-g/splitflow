@@ -177,6 +177,7 @@ export async function leaveGroupAction(formData: FormData) {
 
   revalidatePath("/groups");
   revalidatePath(`/groups/${groupId}`);
+  redirect("/groups");
 }
 
 export async function addMemberToGroupAction(
