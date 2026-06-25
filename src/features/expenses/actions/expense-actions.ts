@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import { createExpenseSchema } from "@/features/expenses/schemas/create-expense-schema";
 import {
@@ -199,4 +200,29 @@ export async function createExpenseAction(
     success: true,
     message: "Expense added successfully.",
   };
+}
+
+export async function deleteExpenseAction(formData: FormData): Promise<void> {
+  const expenseId = String(formData.get("expenseId") ?? "");
+  if (!expenseId) return;
+
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  // Fetch the expense to get group_id for redirect and verify ownership
+  const { data: expense } = await supabase
+    .from("expenses")
+    .select("id, group_id, paid_by")
+    .eq("id", expenseId)
+    .single();
+
+  if (!expense || expense.paid_by !== user.id) return;
+
+  await supabase.from("expenses").delete().eq("id", expenseId);
+
+  revalidatePath("/dashboard");
+  revalidatePath(`/groups/${expense.group_id}`);
+
+  redirect(`/groups/${expense.group_id}`);
 }

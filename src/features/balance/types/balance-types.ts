@@ -1,7 +1,7 @@
 export type UserBalance = {
-  totalOwed: number;       // I owe others
-  totalReceivable: number; // Others owe me
-  netBalance: number;      // positive = I'm owed, negative = I owe
+  totalOwed: number;       // amount I owe others
+  totalReceivable: number; // amount others owe me
+  netBalance: number;      // positive = I am owed more, negative = I owe more
 };
 
 export type PeerBalance = {

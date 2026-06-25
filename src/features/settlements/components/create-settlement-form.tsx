@@ -2,10 +2,11 @@
 
 import { useActionState } from "react";
 
+import {
+  SETTLEMENT_FORM_INITIAL_STATE,
+  type SettlementFormState,
+} from "@/features/settlements/types/settlement-form-state";
 import { createSettlementAction } from "@/features/settlements/actions/settlement-actions";
-import { type SettlementFormState } from "@/features/settlements/types/settlement-form-state";
-
-const INITIAL_STATE: SettlementFormState = { success: false, message: "" };
 
 type Peer = {
   userId: string;
@@ -18,15 +19,15 @@ type Props = {
 };
 
 export function CreateSettlementForm({ peers }: Props) {
-  const [state, formAction, isPending] = useActionState(
+  const [state, formAction, isPending] = useActionState<SettlementFormState, FormData>(
     createSettlementAction,
-    INITIAL_STATE,
+    SETTLEMENT_FORM_INITIAL_STATE,
   );
 
   if (peers.length === 0) {
     return (
       <p className="text-sm text-slate-400">
-        No group members to settle with yet.
+        No peers found. Join a group and add expenses first.
       </p>
     );
   }
@@ -34,11 +35,14 @@ export function CreateSettlementForm({ peers }: Props) {
   return (
     <form action={formAction} className="space-y-4">
       <div>
-        <label className="text-sm font-medium text-slate-200">Paying to</label>
+        <label htmlFor="receiverId" className="mb-1.5 block text-sm font-medium text-slate-300">
+          Paying to
+        </label>
         <select
+          id="receiverId"
           name="receiverId"
           required
-          className="mt-1 w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none ring-indigo-500/50 transition focus:ring-2"
+          className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-100 focus:border-indigo-400 focus:outline-none"
         >
           <option value="" className="bg-slate-900">Select a person…</option>
           {peers.map((p) => (
@@ -50,15 +54,18 @@ export function CreateSettlementForm({ peers }: Props) {
       </div>
 
       <div>
-        <label className="text-sm font-medium text-slate-200">Amount (₹)</label>
+        <label htmlFor="amount" className="mb-1.5 block text-sm font-medium text-slate-300">
+          Amount (₹)
+        </label>
         <input
+          id="amount"
           name="amount"
           type="number"
-          step="0.01"
           min="0.01"
+          step="0.01"
           required
           placeholder="0.00"
-          className="mt-1 w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none ring-indigo-500/50 transition focus:ring-2"
+          className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none"
         />
       </div>
 
@@ -71,7 +78,7 @@ export function CreateSettlementForm({ peers }: Props) {
       <button
         type="submit"
         disabled={isPending}
-        className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+        className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50"
       >
         {isPending ? "Recording…" : "Record payment"}
       </button>
