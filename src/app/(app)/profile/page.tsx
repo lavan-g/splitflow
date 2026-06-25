@@ -1,52 +1,47 @@
+import { redirect } from "next/navigation";
+
+import { EditProfileForm } from "@/features/profile/components/edit-profile-form";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function ProfilePage() {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  const { data: profile, error: profileError } = user
-    ? await supabase
-        .from("profiles")
-        .select("full_name, username, unique_id")
-        .eq("user_id", user.id)
-        .maybeSingle()
-    : { data: null, error: null };
+  if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name, username, unique_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8">
-      <section id="account-settings" className="glass-card rounded-2xl p-6">
+    <main className="mx-auto w-full max-w-2xl px-4 py-8 space-y-6">
+      {/* Read-only info */}
+      <div className="glass-card rounded-2xl p-6">
         <h1 className="text-2xl font-semibold text-white">Profile</h1>
+        <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <dt className="text-slate-400">Email</dt>
+            <dd className="mt-0.5 text-slate-100">{user.email}</dd>
+          </div>
+          <div>
+            <dt className="text-slate-400">Unique ID</dt>
+            <dd className="mt-0.5 font-mono font-semibold text-indigo-300">
+              {profile?.unique_id ?? "Not assigned"}
+            </dd>
+          </div>
+        </dl>
+      </div>
 
-        {userError || profileError ? (
-          <p className="mt-3 text-sm text-rose-400">
-            Failed to load profile details. Please refresh and try again.
-          </p>
-        ) : (
-          <dl className="mt-4 space-y-3 text-sm">
-            <div>
-              <dt className="text-slate-400">Full Name</dt>
-              <dd className="text-slate-100">{profile?.full_name ?? "N/A"}</dd>
-            </div>
-            <div>
-              <dt className="text-slate-400">Username</dt>
-              <dd className="text-slate-100">@{profile?.username ?? "N/A"}</dd>
-            </div>
-            <div>
-              <dt className="text-slate-400">Unique User ID</dt>
-              <dd className="font-semibold text-indigo-300">
-                {profile?.unique_id ?? "Not assigned"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-slate-400">Email</dt>
-              <dd className="text-slate-100">{user?.email ?? "N/A"}</dd>
-            </div>
-          </dl>
-        )}
-      </section>
+      {/* Editable fields */}
+      <div className="glass-card rounded-2xl p-6">
+        <h2 className="mb-5 text-base font-semibold text-white">Edit profile</h2>
+        <EditProfileForm
+          initialFullName={profile?.full_name ?? ""}
+          initialUsername={profile?.username ?? ""}
+        />
+      </div>
     </main>
   );
 }
