@@ -8,7 +8,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 const routes = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/groups", label: "Groups" },
-  { href: "/expenses/new", label: "Add Expense" },
+  { href: "/expenses", label: "Expenses" },
   { href: "/settlements", label: "Settlements" },
 ];
 
