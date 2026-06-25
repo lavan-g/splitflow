@@ -202,6 +202,47 @@ export async function createExpenseAction(
   };
 }
 
+export async function editExpenseAction(
+  _prevState: ExpenseFormState,
+  formData: FormData,
+): Promise<ExpenseFormState> {
+  const expenseId = String(formData.get("expenseId") ?? "");
+  const title = String(formData.get("title") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!expenseId) return { success: false, message: "Expense ID missing." };
+  if (!title || title.length < 2) return { success: false, message: "Title must be at least 2 characters." };
+  if (title.length > 100) return { success: false, message: "Title must be under 100 characters." };
+
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, message: "You must be signed in." };
+
+  // Verify the current user is the one who paid (owns) the expense
+  const { data: expense } = await supabase
+    .from("expenses")
+    .select("paid_by, group_id")
+    .eq("id", expenseId)
+    .single();
+
+  if (!expense || expense.paid_by !== user.id) {
+    return { success: false, message: "You can only edit expenses you created." };
+  }
+
+  const { error } = await supabase
+    .from("expenses")
+    .update({ title, notes: notes || null })
+    .eq("id", expenseId);
+
+  if (error) return { success: false, message: "Failed to update expense." };
+
+  revalidatePath(`/expenses/${expenseId}`);
+  revalidatePath(`/groups/${expense.group_id}`);
+  revalidatePath("/dashboard");
+
+  return { success: true, message: "Expense updated." };
+}
+
 export async function deleteExpenseAction(formData: FormData): Promise<void> {
   const expenseId = String(formData.get("expenseId") ?? "");
   if (!expenseId) return;
