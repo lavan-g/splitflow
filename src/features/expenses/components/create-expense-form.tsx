@@ -1,11 +1,16 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { AuthFeedbackToast } from "@/features/auth/components/auth-feedback-toast";
-import { createExpenseAction } from "@/features/expenses/actions/expense-actions";
+import {
+  createExpenseAction,
+  updateExpenseAction,
+} from "@/features/expenses/actions/expense-actions";
 import {
   EXPENSE_FORM_INITIAL_STATE,
+  type SplitPayloadEntry,
   type SplitType,
 } from "@/features/expenses/types/expense-form-state";
 import { roundCurrency } from "@/features/expenses/utils/split-calculations";
@@ -21,9 +26,21 @@ type GroupOption = {
   }>;
 };
 
+type EditExpenseValues = {
+  id: string;
+  groupId: string;
+  title: string;
+  amount: number;
+  paidBy: string;
+  notes: string;
+  splits: SplitPayloadEntry[];
+  hasReceipt: boolean;
+};
+
 type CreateExpenseFormProps = {
   groups: GroupOption[];
   currentUserId: string;
+  editExpense?: EditExpenseValues;
 };
 
 function computeEqualSplits(memberIds: string[], amount: number) {
@@ -48,20 +65,63 @@ function computeEqualSplits(memberIds: string[], amount: number) {
   return splits;
 }
 
-export function CreateExpenseForm({ groups, currentUserId }: CreateExpenseFormProps) {
+function inferInitialSplitState(splits: SplitPayloadEntry[]) {
+  if (splits.length === 0) {
+    return {
+      splitType: "equal" as SplitType,
+      customAmounts: {} as Record<string, string>,
+      percentages: {} as Record<string, string>,
+    };
+  }
+
+  const first = splits[0].amount;
+  const allEqual = splits.every((s) => Math.abs(s.amount - first) < 0.01);
+
+  if (allEqual) {
+    return {
+      splitType: "equal" as SplitType,
+      customAmounts: {} as Record<string, string>,
+      percentages: {} as Record<string, string>,
+    };
+  }
+
+  const customAmounts: Record<string, string> = {};
+  for (const split of splits) {
+    customAmounts[split.userId] = split.amount.toFixed(2);
+  }
+
+  return {
+    splitType: "custom" as SplitType,
+    customAmounts,
+    percentages: {} as Record<string, string>,
+  };
+}
+
+export function CreateExpenseForm({ groups, currentUserId, editExpense }: CreateExpenseFormProps) {
+  const router = useRouter();
+  const isEditing = Boolean(editExpense);
+  const initialSplit = editExpense ? inferInitialSplitState(editExpense.splits) : null;
+
   const [state, formAction, isPending] = useActionState(
-    createExpenseAction,
+    isEditing ? updateExpenseAction : createExpenseAction,
     EXPENSE_FORM_INITIAL_STATE,
   );
 
-  const [groupId, setGroupId] = useState(groups[0]?.id ?? "");
-  const [title, setTitle] = useState("");
-  const [amountInput, setAmountInput] = useState("");
-  const [splitType, setSplitType] = useState<SplitType>("equal");
-  const [notes, setNotes] = useState("");
-  const [paidBy, setPaidBy] = useState(currentUserId);
-  const [percentages, setPercentages] = useState<Record<string, string>>({});
-  const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
+  const [groupId, setGroupId] = useState(editExpense?.groupId ?? groups[0]?.id ?? "");
+  const [title, setTitle] = useState(editExpense?.title ?? "");
+  const [amountInput, setAmountInput] = useState(
+    editExpense ? editExpense.amount.toFixed(2) : "",
+  );
+  const [splitType, setSplitType] = useState<SplitType>(initialSplit?.splitType ?? "equal");
+  const [notes, setNotes] = useState(editExpense?.notes ?? "");
+  const [paidBy, setPaidBy] = useState(editExpense?.paidBy ?? currentUserId);
+  const [percentages, setPercentages] = useState<Record<string, string>>(
+    initialSplit?.percentages ?? {},
+  );
+  const [customAmounts, setCustomAmounts] = useState<Record<string, string>>(
+    initialSplit?.customAmounts ?? {},
+  );
+  const [removeReceipt, setRemoveReceipt] = useState(false);
   const receiptInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedGroup = useMemo(
@@ -156,6 +216,11 @@ export function CreateExpenseForm({ groups, currentUserId }: CreateExpenseFormPr
       return;
     }
 
+    if (isEditing && editExpense) {
+      router.push(`/expenses/${editExpense.id}`);
+      return;
+    }
+
     const timeoutId = window.setTimeout(() => {
       setTitle("");
       setAmountInput("");
@@ -173,34 +238,48 @@ export function CreateExpenseForm({ groups, currentUserId }: CreateExpenseFormPr
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [currentUserId, selectedGroup, state.success]);
+  }, [currentUserId, editExpense, isEditing, router, selectedGroup, state.success]);
 
   return (
     <form action={formAction} className="space-y-5">
+      {isEditing && editExpense ? (
+        <input type="hidden" name="expenseId" value={editExpense.id} />
+      ) : null}
+      <input type="hidden" name="removeReceipt" value={removeReceipt ? "true" : "false"} />
+
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <label htmlFor="expense-group" className="text-sm font-medium text-slate-200">
             Group
           </label>
-          <select
-            id="expense-group"
-            name="groupId"
-            value={groupId}
-            onChange={(event) => {
-              const nextGroupId = event.target.value;
-              setGroupId(nextGroupId);
-              const firstMember = groups.find((group) => group.id === nextGroupId)?.members[0];
-              setPaidBy(firstMember?.userId ?? currentUserId);
-            }}
-            className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none ring-indigo-500/50 transition focus:ring-2"
-            required
-          >
-            {groups.map((group) => (
-              <option key={group.id} value={group.id} className="bg-slate-900">
-                {group.name} ({group.groupCode})
-              </option>
-            ))}
-          </select>
+          {isEditing ? (
+            <>
+              <input type="hidden" name="groupId" value={groupId} />
+              <p className="rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-300">
+                {selectedGroup?.name ?? "—"} ({selectedGroup?.groupCode ?? "—"})
+              </p>
+            </>
+          ) : (
+            <select
+              id="expense-group"
+              name="groupId"
+              value={groupId}
+              onChange={(event) => {
+                const nextGroupId = event.target.value;
+                setGroupId(nextGroupId);
+                const firstMember = groups.find((group) => group.id === nextGroupId)?.members[0];
+                setPaidBy(firstMember?.userId ?? currentUserId);
+              }}
+              className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none ring-indigo-500/50 transition focus:ring-2"
+              required
+            >
+              {groups.map((group) => (
+                <option key={group.id} value={group.id} className="bg-slate-900">
+                  {group.name} ({group.groupCode})
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -361,6 +440,21 @@ export function CreateExpenseForm({ groups, currentUserId }: CreateExpenseFormPr
         <label htmlFor="expense-receipt" className="text-sm font-medium text-slate-200">
           Receipt (optional)
         </label>
+        {isEditing && editExpense?.hasReceipt && !removeReceipt ? (
+          <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
+            <span>Current receipt attached</span>
+            <button
+              type="button"
+              onClick={() => setRemoveReceipt(true)}
+              className="text-xs text-rose-300 hover:underline"
+            >
+              Remove
+            </button>
+          </div>
+        ) : null}
+        {isEditing && editExpense?.hasReceipt && removeReceipt ? (
+          <p className="text-xs text-rose-300">Receipt will be removed when you save.</p>
+        ) : null}
         <input
           id="expense-receipt"
           name="receipt"
@@ -369,6 +463,9 @@ export function CreateExpenseForm({ groups, currentUserId }: CreateExpenseFormPr
           accept=".pdf,image/jpeg,image/png"
           className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-200"
         />
+        {isEditing ? (
+          <p className="text-xs text-slate-500">Upload a new file to replace the existing receipt.</p>
+        ) : null}
       </div>
 
       <input type="hidden" name="splitType" value={splitType} />
@@ -383,7 +480,11 @@ export function CreateExpenseForm({ groups, currentUserId }: CreateExpenseFormPr
         disabled={isPending || !isFormValid}
         className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {isPending ? "Saving expense..." : "Add expense"}
+        {isPending
+          ? "Saving expense..."
+          : isEditing
+            ? "Save changes"
+            : "Add expense"}
       </button>
     </form>
   );

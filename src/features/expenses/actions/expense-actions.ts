@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { createExpenseSchema } from "@/features/expenses/schemas/create-expense-schema";
+import { createExpenseSchema, updateExpenseSchema } from "@/features/expenses/schemas/create-expense-schema";
 import {
   EXPENSE_FORM_INITIAL_STATE,
   type ExpenseFormState,
@@ -14,6 +14,7 @@ import {
   roundCurrency,
   validateSplitTypeRules,
 } from "@/features/expenses/utils/split-calculations";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const ALLOWED_RECEIPT_TYPES = new Set([
@@ -34,6 +35,105 @@ function parseSplitPayload(payload: unknown): SplitPayloadEntry[] {
   } catch {
     return [];
   }
+}
+
+async function uploadReceipt(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  userId: string,
+  receipt: FormDataEntryValue | null,
+): Promise<{ path: string | null; error: string | null }> {
+  if (!(receipt instanceof File) || receipt.size === 0) {
+    return { path: null, error: null };
+  }
+
+  if (!ALLOWED_RECEIPT_TYPES.has(receipt.type)) {
+    return { path: null, error: "Receipt must be a PDF, JPG, or PNG file." };
+  }
+
+  if (receipt.size > MAX_RECEIPT_SIZE_BYTES) {
+    return { path: null, error: "Receipt exceeds 8MB size limit." };
+  }
+
+  const safeName = receipt.name.replace(/[^a-zA-Z0-9.\-_]/g, "-");
+  const receiptPath = `${userId}/${crypto.randomUUID()}-${safeName}`;
+  const { error: uploadError } = await supabase.storage
+    .from("receipts")
+    .upload(receiptPath, receipt, {
+      contentType: receipt.type,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    return { path: null, error: uploadError.message };
+  }
+
+  return { path: receiptPath, error: null };
+}
+
+type ValidatedExpenseInput = {
+  groupId: string;
+  title: string;
+  amount: number;
+  paidBy: string;
+  notes?: string;
+  splitType: "equal" | "percentage" | "custom";
+  splits: SplitPayloadEntry[];
+};
+
+async function validateExpenseInput(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  userId: string,
+  parsed: ValidatedExpenseInput,
+): Promise<ExpenseFormState | null> {
+  const { data: currentMembership } = await supabase
+    .from("group_members")
+    .select("id")
+    .eq("group_id", parsed.groupId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!currentMembership) {
+    return {
+      success: false,
+      message: "You can only manage expenses in groups you belong to.",
+    };
+  }
+
+  const splitUserIds = Array.from(new Set(parsed.splits.map((split) => split.userId)));
+  const { data: groupMembers } = await supabase
+    .from("group_members")
+    .select("user_id")
+    .eq("group_id", parsed.groupId)
+    .in("user_id", splitUserIds.concat(parsed.paidBy));
+
+  const memberIds = new Set((groupMembers ?? []).map((member) => member.user_id));
+  if (!memberIds.has(parsed.paidBy)) {
+    return { success: false, message: "Payer must be a member of the group." };
+  }
+
+  const everySplitUserIsMember = parsed.splits.every((split) => memberIds.has(split.userId));
+  if (!everySplitUserIsMember) {
+    return {
+      success: false,
+      message: "All split users must belong to the selected group.",
+    };
+  }
+
+  if (!validateSplitTypeRules(parsed.splitType, parsed.amount, parsed.splits)) {
+    return {
+      success: false,
+      message: "Split totals are invalid for the selected split type.",
+    };
+  }
+
+  if (!isAmountMatching(parsed.amount, parsed.splits)) {
+    return {
+      success: false,
+      message: "Split amounts must exactly match the expense amount.",
+    };
+  }
+
+  return null;
 }
 
 export async function createExpenseAction(
@@ -68,90 +168,18 @@ export async function createExpenseAction(
     return { success: false, message: "You must be signed in." };
   }
 
-  const { data: currentMembership } = await supabase
-    .from("group_members")
-    .select("id")
-    .eq("group_id", parsed.data.groupId)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (!currentMembership) {
-    return {
-      success: false,
-      message: "You can only add expenses to groups you belong to.",
-    };
+  const validationError = await validateExpenseInput(supabase, user.id, parsed.data);
+  if (validationError) {
+    return validationError;
   }
 
-  const splitUserIds = Array.from(new Set(parsed.data.splits.map((split) => split.userId)));
-  const { data: groupMembers } = await supabase
-    .from("group_members")
-    .select("user_id")
-    .eq("group_id", parsed.data.groupId)
-    .in("user_id", splitUserIds.concat(parsed.data.paidBy));
-
-  const memberIds = new Set((groupMembers ?? []).map((member) => member.user_id));
-  if (!memberIds.has(parsed.data.paidBy)) {
-    return { success: false, message: "Payer must be a member of the group." };
-  }
-
-  const everySplitUserIsMember = parsed.data.splits.every((split) =>
-    memberIds.has(split.userId),
+  const { path: receiptPath, error: receiptError } = await uploadReceipt(
+    supabase,
+    user.id,
+    formData.get("receipt"),
   );
-  if (!everySplitUserIsMember) {
-    return {
-      success: false,
-      message: "All split users must belong to the selected group.",
-    };
-  }
-
-  if (
-    !validateSplitTypeRules(parsed.data.splitType, parsed.data.amount, parsed.data.splits)
-  ) {
-    return {
-      success: false,
-      message: "Split totals are invalid for the selected split type.",
-    };
-  }
-
-  if (!isAmountMatching(parsed.data.amount, parsed.data.splits)) {
-    return {
-      success: false,
-      message: "Split amounts must exactly match the expense amount.",
-    };
-  }
-
-  let receiptPath: string | null = null;
-  const receipt = formData.get("receipt");
-  if (receipt instanceof File && receipt.size > 0) {
-    if (!ALLOWED_RECEIPT_TYPES.has(receipt.type)) {
-      return {
-        success: false,
-        message: "Receipt must be a PDF, JPG, or PNG file.",
-      };
-    }
-
-    if (receipt.size > MAX_RECEIPT_SIZE_BYTES) {
-      return {
-        success: false,
-        message: "Receipt exceeds 8MB size limit.",
-      };
-    }
-
-    const safeName = receipt.name.replace(/[^a-zA-Z0-9.\-_]/g, "-");
-    receiptPath = `${user.id}/${crypto.randomUUID()}-${safeName}`;
-    const { error: uploadError } = await supabase.storage
-      .from("receipts")
-      .upload(receiptPath, receipt, {
-        contentType: receipt.type,
-        upsert: false,
-      });
-
-    if (uploadError) {
-      return {
-        success: false,
-        message: uploadError.message,
-      };
-    }
+  if (receiptError) {
+    return { success: false, message: receiptError };
   }
 
   const { data: expense, error: expenseError } = await supabase
@@ -194,6 +222,7 @@ export async function createExpenseAction(
   revalidatePath("/groups");
   revalidatePath(`/groups/${parsed.data.groupId}`);
   revalidatePath("/expenses/new");
+  revalidatePath("/expenses");
 
   return {
     ...EXPENSE_FORM_INITIAL_STATE,
@@ -202,45 +231,128 @@ export async function createExpenseAction(
   };
 }
 
-export async function editExpenseAction(
+export async function updateExpenseAction(
   _prevState: ExpenseFormState,
   formData: FormData,
 ): Promise<ExpenseFormState> {
-  const expenseId = String(formData.get("expenseId") ?? "");
-  const title = String(formData.get("title") ?? "").trim();
-  const notes = String(formData.get("notes") ?? "").trim();
+  const splitPayload = parseSplitPayload(formData.get("splitsPayload"));
 
-  if (!expenseId) return { success: false, message: "Expense ID missing." };
-  if (!title || title.length < 2) return { success: false, message: "Title must be at least 2 characters." };
-  if (title.length > 100) return { success: false, message: "Title must be under 100 characters." };
+  const parsed = updateExpenseSchema.safeParse({
+    expenseId: formData.get("expenseId"),
+    groupId: formData.get("groupId"),
+    title: formData.get("title"),
+    amount: formData.get("amount"),
+    paidBy: formData.get("paidBy"),
+    notes: formData.get("notes"),
+    splitType: formData.get("splitType"),
+    splits: splitPayload,
+  });
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message ?? "Invalid expense payload.",
+    };
+  }
 
   const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { success: false, message: "You must be signed in." };
+  const admin = createSupabaseAdminClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  // Verify the current user is the one who paid (owns) the expense
-  const { data: expense } = await supabase
+  if (!user) {
+    return { success: false, message: "You must be signed in." };
+  }
+
+  const { data: existing } = await admin
     .from("expenses")
-    .select("paid_by, group_id")
-    .eq("id", expenseId)
+    .select("id, paid_by, group_id, receipt_url")
+    .eq("id", parsed.data.expenseId)
     .single();
 
-  if (!expense || expense.paid_by !== user.id) {
+  if (!existing || existing.paid_by !== user.id) {
     return { success: false, message: "You can only edit expenses you created." };
   }
 
-  const { error } = await supabase
+  if (existing.group_id !== parsed.data.groupId) {
+    return { success: false, message: "Cannot move an expense to a different group." };
+  }
+
+  const validationError = await validateExpenseInput(supabase, user.id, parsed.data);
+  if (validationError) {
+    return validationError;
+  }
+
+  const { path: newReceiptPath, error: receiptError } = await uploadReceipt(
+    supabase,
+    user.id,
+    formData.get("receipt"),
+  );
+  if (receiptError) {
+    return { success: false, message: receiptError };
+  }
+
+  const removeReceipt = formData.get("removeReceipt") === "true";
+  let receiptUrl = existing.receipt_url;
+
+  if (newReceiptPath) {
+    if (existing.receipt_url) {
+      await admin.storage.from("receipts").remove([existing.receipt_url]);
+    }
+    receiptUrl = newReceiptPath;
+  } else if (removeReceipt && existing.receipt_url) {
+    await admin.storage.from("receipts").remove([existing.receipt_url]);
+    receiptUrl = null;
+  }
+
+  const { error: expenseError } = await supabase
     .from("expenses")
-    .update({ title, notes: notes || null })
-    .eq("id", expenseId);
+    .update({
+      title: parsed.data.title,
+      amount: roundCurrency(parsed.data.amount),
+      paid_by: parsed.data.paidBy,
+      notes: parsed.data.notes || null,
+      receipt_url: receiptUrl,
+    })
+    .eq("id", parsed.data.expenseId);
 
-  if (error) return { success: false, message: "Failed to update expense." };
+  if (expenseError) {
+    return {
+      success: false,
+      message: expenseError.message ?? "Failed to update expense.",
+    };
+  }
 
-  revalidatePath(`/expenses/${expenseId}`);
-  revalidatePath(`/groups/${expense.group_id}`);
+  await admin.from("expense_splits").delete().eq("expense_id", parsed.data.expenseId);
+
+  const splitsInsertRows = parsed.data.splits.map((split) => ({
+    expense_id: parsed.data.expenseId,
+    user_id: split.userId,
+    amount: roundCurrency(split.amount),
+  }));
+
+  const { error: splitsError } = await supabase.from("expense_splits").insert(splitsInsertRows);
+
+  if (splitsError) {
+    return {
+      success: false,
+      message: splitsError.message,
+    };
+  }
+
   revalidatePath("/dashboard");
+  revalidatePath("/groups");
+  revalidatePath(`/groups/${parsed.data.groupId}`);
+  revalidatePath("/expenses");
+  revalidatePath(`/expenses/${parsed.data.expenseId}`);
+  revalidatePath(`/expenses/${parsed.data.expenseId}/edit`);
 
-  return { success: true, message: "Expense updated." };
+  return {
+    ...EXPENSE_FORM_INITIAL_STATE,
+    success: true,
+    message: "Expense updated successfully.",
+  };
 }
 
 export async function deleteExpenseAction(formData: FormData): Promise<void> {
