@@ -1,5 +1,10 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import {
+  calculatePeerBalances,
+  calculateUserBalance,
+} from "@/features/balance/utils/calculate-balances";
 import { GroupBannerActions } from "@/features/groups/components/group-banner-actions";
 import { CopyCodeButton } from "@/features/groups/components/copy-code-button";
 import { UserSearchAndAdd } from "@/features/groups/components/user-search-and-add";
@@ -22,7 +27,6 @@ export default async function GroupDetailsPage({ params }: GroupDetailsPageProps
 
   if (!user) notFound();
 
-  // Use admin client so RLS doesn't block non-creator members from loading the page.
   const { data: group, error } = await admin
     .from("groups")
     .select("id, name, group_code, created_by, created_at")
@@ -33,7 +37,6 @@ export default async function GroupDetailsPage({ params }: GroupDetailsPageProps
 
   const isCreator = group.created_by === user.id;
 
-  // Check membership independently via admin client.
   const { data: membership } = await admin
     .from("group_members")
     .select("user_id")
@@ -43,7 +46,6 @@ export default async function GroupDetailsPage({ params }: GroupDetailsPageProps
 
   if (!isCreator && !membership) notFound();
 
-  // Fetch all members with profile details using admin + separate profiles query.
   const { data: memberRows } = await admin
     .from("group_members")
     .select("user_id, joined_at")
@@ -64,20 +66,68 @@ export default async function GroupDetailsPage({ params }: GroupDetailsPageProps
     return { ...m, profile };
   });
 
-  const { data: expenses } = await admin
+  // All expenses in this group (for balance calculation)
+  const { data: allExpenses } = await admin
     .from("expenses")
-    .select("id, title, amount, created_at, paid_by")
+    .select("id, title, amount, created_at, paid_by, group_id")
     .eq("group_id", id)
-    .order("created_at", { ascending: false })
-    .limit(10);
+    .order("created_at", { ascending: false });
 
-  const payerIds = [...new Set((expenses ?? []).map((e) => e.paid_by))];
+  const expenseIds = (allExpenses ?? []).map((e) => e.id);
+
+  const { data: splits } = expenseIds.length
+    ? await admin
+        .from("expense_splits")
+        .select("expense_id, user_id, amount")
+        .in("expense_id", expenseIds)
+    : { data: [] };
+
+  const expenseMap = new Map((allExpenses ?? []).map((e) => [e.id, e]));
+  const normalisedSplits = (splits ?? [])
+    .map((s) => {
+      const expense = expenseMap.get(s.expense_id);
+      if (!expense) return null;
+      return {
+        user_id: s.user_id,
+        amount: Number(s.amount),
+        expense_id: s.expense_id,
+        expenses: { paid_by: expense.paid_by },
+      };
+    })
+    .filter((s): s is NonNullable<typeof s> => s !== null);
+
+  const groupBalance = calculateUserBalance(user.id, normalisedSplits);
+
+  const balancePeerIds = [
+    ...new Set([
+      ...(splits ?? []).map((s) => s.user_id),
+      ...(allExpenses ?? []).map((e) => e.paid_by),
+    ]),
+  ].filter((peerId) => peerId !== user.id);
+
+  const { data: balancePeerProfiles } = balancePeerIds.length
+    ? await admin
+        .from("profiles")
+        .select("user_id, full_name, username")
+        .in("user_id", balancePeerIds)
+    : { data: [] };
+
+  const peerBalances = calculatePeerBalances(
+    user.id,
+    normalisedSplits,
+    balancePeerProfiles ?? [],
+  );
+
+  const recentExpenses = (allExpenses ?? []).slice(0, 10);
+  const payerIds = [...new Set(recentExpenses.map((e) => e.paid_by))];
   const { data: payerProfiles } = payerIds.length
     ? await admin
         .from("profiles")
         .select("user_id, full_name")
         .in("user_id", payerIds)
     : { data: [] };
+
+  const netPositive = groupBalance.netBalance >= 0;
 
   return (
     <main className="mx-auto w-full max-w-4xl px-4 py-8 space-y-6">
@@ -103,6 +153,72 @@ export default async function GroupDetailsPage({ params }: GroupDetailsPageProps
         </div>
       </div>
 
+      {/* Group balance */}
+      <div className="glass-card rounded-2xl p-5">
+        <h2 className="mb-4 text-base font-semibold text-white">Your balance in this group</h2>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+              You are owed
+            </p>
+            <p className="mt-1 text-xl font-bold text-emerald-400">
+              ₹{groupBalance.totalReceivable.toFixed(2)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">You owe</p>
+            <p className="mt-1 text-xl font-bold text-rose-400">
+              ₹{groupBalance.totalOwed.toFixed(2)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Net</p>
+            <p
+              className={`mt-1 text-xl font-bold ${netPositive ? "text-emerald-400" : "text-rose-400"}`}
+            >
+              {netPositive ? "+" : ""}₹{Math.abs(groupBalance.netBalance).toFixed(2)}
+            </p>
+          </div>
+        </div>
+
+        {peerBalances.length > 0 ? (
+          <div className="mt-5 border-t border-white/10 pt-4">
+            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-400">
+              Per person
+            </p>
+            <ul className="space-y-2">
+              {peerBalances.map((peer) => (
+                <li key={peer.userId} className="flex items-center justify-between text-sm">
+                  <div>
+                    <p className="font-medium text-slate-100">{peer.fullName}</p>
+                    <p className="text-xs text-slate-400">@{peer.username}</p>
+                  </div>
+                  <div className="text-right">
+                    <p
+                      className={`font-semibold ${peer.amount >= 0 ? "text-emerald-400" : "text-rose-400"}`}
+                    >
+                      {peer.amount >= 0 ? "+" : ""}₹{Math.abs(peer.amount).toFixed(2)}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {peer.amount >= 0 ? "owes you" : "you owe"}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <Link
+              href="/settlements"
+              className="mt-3 inline-block text-xs text-indigo-300 hover:underline"
+            >
+              Settle up →
+            </Link>
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-slate-400">All settled up in this group.</p>
+        )}
+      </div>
+
       <div className="grid gap-6 md:grid-cols-2">
         {/* Members */}
         <div className="glass-card rounded-2xl p-5">
@@ -124,7 +240,6 @@ export default async function GroupDetailsPage({ params }: GroupDetailsPageProps
             ))}
           </ul>
 
-          {/* Add member */}
           <div className="mt-4 border-t border-white/10 pt-4">
             <p className="mb-2 text-xs text-slate-400">
               Search by username or{" "}
@@ -137,7 +252,6 @@ export default async function GroupDetailsPage({ params }: GroupDetailsPageProps
             />
           </div>
 
-          {/* Leave group */}
           {!isCreator && (
             <form action={leaveGroupAction} className="mt-3">
               <input type="hidden" name="groupId" value={group.id} />
@@ -153,24 +267,35 @@ export default async function GroupDetailsPage({ params }: GroupDetailsPageProps
 
         {/* Recent expenses */}
         <div className="glass-card rounded-2xl p-5">
-          <h2 className="mb-3 text-base font-semibold text-white">Recent expenses</h2>
-          {!expenses || expenses.length === 0 ? (
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-white">Recent expenses</h2>
+            <Link href="/expenses/new" className="text-xs text-indigo-300 hover:underline">
+              Add expense →
+            </Link>
+          </div>
+          {recentExpenses.length === 0 ? (
             <p className="text-sm text-slate-400">No expenses yet.</p>
           ) : (
             <ul className="space-y-2">
-              {expenses.map((expense) => {
+              {recentExpenses.map((expense) => {
                 const payer = (payerProfiles ?? []).find((p) => p.user_id === expense.paid_by);
+                const iAmPayer = expense.paid_by === user.id;
                 return (
-                  <li key={expense.id} className="flex items-center justify-between text-sm">
-                    <div>
-                      <p className="font-medium text-slate-100">{expense.title}</p>
-                      <p className="text-xs text-slate-400">
-                        Paid by {payer?.full_name ?? "—"}
-                      </p>
-                    </div>
-                    <span className="font-semibold text-indigo-300">
-                      ₹{Number(expense.amount).toFixed(2)}
-                    </span>
+                  <li key={expense.id}>
+                    <Link
+                      href={`/expenses/${expense.id}`}
+                      className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm transition hover:bg-white/10"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-100">{expense.title}</p>
+                        <p className="text-xs text-slate-400">
+                          Paid by {iAmPayer ? "you" : (payer?.full_name ?? "—")}
+                        </p>
+                      </div>
+                      <span className="ml-3 shrink-0 font-semibold text-indigo-300">
+                        ₹{Number(expense.amount).toFixed(2)}
+                      </span>
+                    </Link>
                   </li>
                 );
               })}

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { DeleteExpenseButton } from "@/features/expenses/components/delete-expense-button";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getReceiptSignedUrl } from "@/lib/supabase/receipt-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type ExpenseDetailsPageProps = {
@@ -61,6 +62,10 @@ export default async function ExpenseDetailsPage({ params }: ExpenseDetailsPageP
 
   const payer = profileMap.get(expense.paid_by);
   const isOwner = expense.paid_by === user.id;
+
+  const receiptSignedUrl = expense.receipt_url
+    ? await getReceiptSignedUrl(expense.receipt_url)
+    : null;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8 space-y-6">
@@ -123,14 +128,18 @@ export default async function ExpenseDetailsPage({ params }: ExpenseDetailsPageP
             <div className="col-span-2">
               <dt className="text-slate-400">Receipt</dt>
               <dd className="mt-0.5">
-                <a
-                  href={expense.receipt_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-indigo-300 underline underline-offset-2"
-                >
-                  View receipt
-                </a>
+                {receiptSignedUrl ? (
+                  <a
+                    href={receiptSignedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-indigo-300 underline underline-offset-2"
+                  >
+                    View receipt
+                  </a>
+                ) : (
+                  <span className="text-sm text-slate-500">Receipt unavailable</span>
+                )}
               </dd>
             </div>
           )}
