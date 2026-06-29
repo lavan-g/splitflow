@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { calculatePeerBalances } from "@/features/balance/utils/calculate-balances";
 import { CreateSettlementForm } from "@/features/settlements/components/create-settlement-form";
 import { markSettledAction } from "@/features/settlements/actions/settlement-actions";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -63,6 +64,47 @@ export default async function SettlementsPage() {
     })
     .filter((p): p is NonNullable<typeof p> => p !== null);
 
+  // Global balances for auto-suggest when recording payments
+  const { data: allExpenses } = groupIds.length
+    ? await admin
+        .from("expenses")
+        .select("id, paid_by, group_id")
+        .in("group_id", groupIds)
+    : { data: [] };
+
+  const allExpenseIds = (allExpenses ?? []).map((e) => e.id);
+
+  const { data: allSplits } = allExpenseIds.length
+    ? await admin
+        .from("expense_splits")
+        .select("expense_id, user_id, amount")
+        .in("expense_id", allExpenseIds)
+    : { data: [] };
+
+  const expenseMap = new Map((allExpenses ?? []).map((e) => [e.id, e]));
+  const normalisedSplits = (allSplits ?? [])
+    .map((s) => {
+      const expense = expenseMap.get(s.expense_id);
+      if (!expense) return null;
+      return {
+        user_id: s.user_id,
+        amount: Number(s.amount),
+        expense_id: s.expense_id,
+        expenses: { paid_by: expense.paid_by },
+      };
+    })
+    .filter((s): s is NonNullable<typeof s> => s !== null);
+
+  const peerBalanceRows = calculatePeerBalances(
+    user.id,
+    normalisedSplits,
+    (profiles ?? []).filter((p) => groupPeerIds.includes(p.user_id)),
+  );
+
+  const balanceByPeer = Object.fromEntries(
+    peerBalanceRows.map((p) => [p.userId, p.amount]),
+  );
+
   const pending = (allSettlements ?? []).filter((s) => s.status === "pending");
   const history = (allSettlements ?? []).filter((s) => s.status === "settled");
 
@@ -78,7 +120,7 @@ export default async function SettlementsPage() {
         <div className="lg:col-span-1">
           <div className="glass-card rounded-2xl p-5">
             <h2 className="mb-4 text-base font-semibold text-white">Record a payment</h2>
-            <CreateSettlementForm peers={peers} />
+            <CreateSettlementForm peers={peers} balanceByPeer={balanceByPeer} />
           </div>
         </div>
 

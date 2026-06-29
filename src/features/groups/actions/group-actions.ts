@@ -293,3 +293,44 @@ export async function deleteGroupAction(formData: FormData) {
   revalidatePath("/groups");
   redirect("/groups");
 }
+
+export async function removeMemberAction(formData: FormData) {
+  const groupId = String(formData.get("groupId") ?? "");
+  const memberUserId = String(formData.get("memberUserId") ?? "");
+
+  if (!groupId || !memberUserId) {
+    return;
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return;
+  }
+
+  const { data: group } = await supabase
+    .from("groups")
+    .select("created_by")
+    .eq("id", groupId)
+    .maybeSingle();
+
+  if (!group || group.created_by !== user.id) {
+    return;
+  }
+
+  if (memberUserId === user.id || memberUserId === group.created_by) {
+    return;
+  }
+
+  await supabase
+    .from("group_members")
+    .delete()
+    .eq("group_id", groupId)
+    .eq("user_id", memberUserId);
+
+  revalidatePath("/groups");
+  revalidatePath(`/groups/${groupId}`);
+}

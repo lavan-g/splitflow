@@ -7,6 +7,7 @@ import {
 } from "@/features/balance/utils/calculate-balances";
 import { GroupBannerActions } from "@/features/groups/components/group-banner-actions";
 import { CopyCodeButton } from "@/features/groups/components/copy-code-button";
+import { RemoveMemberButton } from "@/features/groups/components/remove-member-button";
 import { UserSearchAndAdd } from "@/features/groups/components/user-search-and-add";
 import { leaveGroupAction } from "@/features/groups/actions/group-actions";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -225,17 +226,28 @@ export default async function GroupDetailsPage({ params }: GroupDetailsPageProps
           <h2 className="mb-3 text-base font-semibold text-white">Members</h2>
           <ul className="space-y-2">
             {members.map((m) => (
-              <li key={m.user_id} className="flex items-center justify-between text-sm">
-                <div>
+              <li key={m.user_id} className="flex items-center justify-between gap-3 text-sm">
+                <div className="min-w-0">
                   <p className="font-medium text-slate-100">{m.profile?.full_name ?? "Unknown"}</p>
                   <p className="text-xs text-slate-400">
                     @{m.profile?.username ?? "—"}
                     {m.user_id === group.created_by ? " · Owner" : ""}
                   </p>
                 </div>
-                {m.profile?.unique_id && (
-                  <span className="text-xs font-mono text-indigo-300">{m.profile.unique_id}</span>
-                )}
+                <div className="flex shrink-0 items-center gap-2">
+                  {m.profile?.unique_id && (
+                    <span className="text-xs font-mono text-indigo-300">{m.profile.unique_id}</span>
+                  )}
+                  {isCreator &&
+                    m.user_id !== group.created_by &&
+                    m.user_id !== user.id && (
+                      <RemoveMemberButton
+                        groupId={group.id}
+                        memberUserId={m.user_id}
+                        memberName={m.profile?.full_name ?? "member"}
+                      />
+                    )}
+                </div>
               </li>
             ))}
           </ul>

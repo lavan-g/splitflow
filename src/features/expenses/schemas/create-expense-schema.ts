@@ -24,3 +24,7 @@ export const createExpenseSchema = z.object({
   splitType: z.enum(["equal", "percentage", "custom"]),
   splits: z.array(splitPayloadEntrySchema).min(1, "At least one split is required."),
 });
+
+export const updateExpenseSchema = createExpenseSchema.extend({
+  expenseId: z.string().uuid(),
+});
