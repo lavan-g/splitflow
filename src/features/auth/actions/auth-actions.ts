@@ -84,7 +84,7 @@ export async function signUpAction(
   }
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
@@ -124,12 +124,11 @@ export async function signUpAction(
     };
   }
 
-  return {
-    success: true,
-    message:
-      "Account created. Check your inbox to verify your email before signing in.",
-    showCreateAccountCta: false,
-  };
+  if (data.session) {
+    redirect("/dashboard");
+  }
+
+  redirect(`/signup/confirm?email=${encodeURIComponent(parsed.data.email)}`);
 }
 
 export async function forgotPasswordAction(
