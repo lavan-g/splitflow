@@ -35,3 +35,12 @@ body {
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgb(255 255 255 / 12%);
 }
+
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
