@@ -14,9 +14,9 @@ export default async function Home() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center px-4">
-      <section className="glass-card w-full rounded-3xl p-8 text-center">
-        <h1 className="text-3xl font-semibold tracking-tight text-white">Welcome to SplitFlow</h1>
+    <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center px-3 sm:px-4">
+      <section className="glass-card w-full rounded-3xl p-6 text-center sm:p-8">
+        <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">Welcome to SplitFlow</h1>
         <p className="mt-3 text-sm text-slate-300">
           Choose how you want to continue.
         </p>

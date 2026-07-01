@@ -14,8 +14,8 @@ export default async function SignupConfirmPage({ searchParams }: SignupConfirmP
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md items-center px-4">
-      <section className="glass-card w-full rounded-2xl p-6 text-center">
+    <main className="mx-auto flex min-h-screen w-full max-w-md items-center px-3 sm:px-4">
+      <section className="glass-card w-full rounded-2xl p-5 text-center sm:p-6">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15">
           <MailCheck className="h-7 w-7 text-emerald-400" />
         </div>

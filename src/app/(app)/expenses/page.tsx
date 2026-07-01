@@ -65,10 +65,10 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     : null;
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-4 py-8 space-y-6">
-      <div className="flex items-center justify-between gap-4">
+    <main className="page-main max-w-4xl space-y-6">
+      <div className="page-header">
         <div>
-          <h1 className="text-2xl font-semibold text-white">All expenses</h1>
+          <h1 className="page-title">All expenses</h1>
           {activeGroupName && (
             <p className="mt-1 text-sm text-slate-400">Filtered by {activeGroupName}</p>
           )}

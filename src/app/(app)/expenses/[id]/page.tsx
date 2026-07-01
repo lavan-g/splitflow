@@ -68,12 +68,12 @@ export default async function ExpenseDetailsPage({ params }: ExpenseDetailsPageP
     : null;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8 space-y-6">
+    <main className="page-main max-w-3xl space-y-6">
       {/* Header card */}
-      <div className="glass-card rounded-2xl p-6">
-        <div className="flex items-start justify-between gap-4">
+      <div className="glass-card rounded-2xl p-5 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-white">{expense.title}</h1>
+            <h1 className="page-title">{expense.title}</h1>
             {group && (
               <Link
                 href={`/groups/${group.id}`}
@@ -83,8 +83,8 @@ export default async function ExpenseDetailsPage({ params }: ExpenseDetailsPageP
               </Link>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-2xl font-bold text-indigo-300">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xl font-bold text-indigo-300 sm:text-2xl">
               ₹{Number(expense.amount).toFixed(2)}
             </span>
             {isOwner && (

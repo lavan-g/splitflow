@@ -44,3 +44,15 @@ body {
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
+
+.page-main {
+  @apply mx-auto w-full px-3 py-6 sm:px-4 sm:py-8;
+}
+
+.page-header {
+  @apply flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between;
+}
+
+.page-title {
+  @apply text-xl font-semibold text-white sm:text-2xl;
+}

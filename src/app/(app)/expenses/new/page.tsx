@@ -21,9 +21,9 @@ export default async function NewExpensePage() {
 
   if (groupIds.length === 0) {
     return (
-      <main className="mx-auto w-full max-w-3xl px-4 py-8">
-        <div className="glass-card rounded-2xl p-6">
-          <h1 className="text-2xl font-semibold text-white">Add Expense</h1>
+      <main className="page-main max-w-3xl">
+        <div className="glass-card rounded-2xl p-5 sm:p-6">
+          <h1 className="page-title">Add Expense</h1>
           <p className="mt-3 text-sm text-slate-400">
             You need to be in at least one group before adding an expense.{" "}
             <a href="/groups" className="text-indigo-300 underline underline-offset-2">
@@ -65,9 +65,9 @@ export default async function NewExpensePage() {
   }));
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8">
-      <div className="glass-card rounded-2xl p-6">
-        <h1 className="mb-1 text-2xl font-semibold text-white">Add Expense</h1>
+    <main className="page-main max-w-3xl">
+      <div className="glass-card rounded-2xl p-5 sm:p-6">
+        <h1 className="page-title mb-1">Add Expense</h1>
         <p className="mb-6 text-sm text-slate-400">
           Fill in the details and choose how to split.
         </p>

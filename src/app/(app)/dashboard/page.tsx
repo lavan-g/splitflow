@@ -99,10 +99,10 @@ export default async function DashboardPage() {
   const firstName = profile?.full_name?.split(" ")[0] ?? "there";
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-8 space-y-6">
+    <main className="page-main max-w-6xl space-y-6">
       {/* Welcome */}
       <div className="glass-card rounded-2xl p-6">
-        <h1 className="text-2xl font-semibold text-white">
+        <h1 className="page-title">
           Hey, {firstName} 👋
         </h1>
         {profile?.unique_id && (

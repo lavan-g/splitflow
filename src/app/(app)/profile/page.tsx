@@ -20,9 +20,9 @@ export default async function ProfilePage() {
   const avatarUrl = getAvatarPublicUrl(profile?.avatar_url);
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-8 space-y-6">
-      <div className="glass-card rounded-2xl p-6">
-        <h1 className="text-2xl font-semibold text-white">Profile</h1>
+    <main className="page-main max-w-2xl space-y-6">
+      <div className="glass-card rounded-2xl p-5 sm:p-6">
+        <h1 className="page-title">Profile</h1>
         <dl className="mt-4 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-slate-400">Email</dt>
