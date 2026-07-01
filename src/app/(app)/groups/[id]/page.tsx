@@ -131,12 +131,12 @@ export default async function GroupDetailsPage({ params }: GroupDetailsPageProps
   const netPositive = groupBalance.netBalance >= 0;
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-4 py-8 space-y-6">
+    <main className="page-main max-w-4xl space-y-6">
       {/* Banner */}
-      <div className="glass-card rounded-2xl p-6">
-        <div className="flex items-start justify-between gap-4">
+      <div className="glass-card rounded-2xl p-5 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-white">{group.name}</h1>
+            <h1 className="page-title">{group.name}</h1>
             <p className="mt-1 flex items-center gap-0.5 text-sm text-slate-400">
               Code:{" "}
               <span className="font-mono text-indigo-300">{group.group_code}</span>

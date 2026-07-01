@@ -54,7 +54,7 @@ export default async function GroupsPage({ searchParams }: GroupsPageProps) {
           : null;
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-8">
+    <main className="page-main max-w-7xl">
       {deleteMessage && (
         <div
           className={`mb-4 rounded-xl px-4 py-3 text-sm font-medium ${

@@ -69,8 +69,8 @@ export default async function EditExpensePage({ params }: EditExpensePageProps) 
   ];
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8 space-y-6">
-      <div className="glass-card rounded-2xl p-6">
+    <main className="page-main max-w-3xl space-y-6">
+      <div className="glass-card rounded-2xl p-5 sm:p-6">
         <div className="mb-1 flex items-center gap-2">
           <Link
             href={`/expenses/${expense.id}`}
@@ -86,7 +86,7 @@ export default async function EditExpensePage({ params }: EditExpensePageProps) 
             {group.name}
           </Link>
         </div>
-        <h1 className="mt-3 text-xl font-semibold text-white">Edit expense</h1>
+        <h1 className="page-title mt-3">Edit expense</h1>
         <p className="mt-1 text-sm text-slate-400">
           Update amount, splits, payer, notes, or receipt.
         </p>

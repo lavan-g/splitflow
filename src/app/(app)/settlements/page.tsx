@@ -114,7 +114,7 @@ export default async function SettlementsPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-8 space-y-6">
+    <main className="page-main max-w-5xl space-y-6">
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Record payment form */}
         <div className="lg:col-span-1">
