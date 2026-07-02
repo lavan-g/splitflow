@@ -42,20 +42,32 @@ export default async function NewExpensePage() {
     .in("id", groupIds)
     .order("created_at", { ascending: false });
 
-  // Fetch all members of those groups with profiles
-  const { data: memberProfiles } = await supabase
+  // Fetch all members of those groups (no direct FK between group_members and profiles,
+  // so profiles are fetched separately and joined in memory).
+  const { data: groupMemberRows } = await supabase
     .from("group_members")
-    .select("group_id, user_id, profiles(full_name, username)")
+    .select("group_id, user_id")
     .in("group_id", groupIds);
+
+  const memberUserIds = [...new Set((groupMemberRows ?? []).map((mp) => mp.user_id))];
+
+  const { data: profiles } = memberUserIds.length
+    ? await supabase
+        .from("profiles")
+        .select("user_id, full_name, username")
+        .in("user_id", memberUserIds)
+    : { data: [] };
+
+  const profileMap = new Map((profiles ?? []).map((profile) => [profile.user_id, profile]));
 
   const groupsWithMembers = (groups ?? []).map((group) => ({
     id: group.id,
     name: group.name,
     groupCode: group.group_code,
-    members: (memberProfiles ?? [])
+    members: (groupMemberRows ?? [])
       .filter((mp) => mp.group_id === group.id)
       .map((mp) => {
-        const profile = Array.isArray(mp.profiles) ? mp.profiles[0] : mp.profiles;
+        const profile = profileMap.get(mp.user_id);
         return {
           userId: mp.user_id,
           fullName: profile?.full_name ?? "Unknown",

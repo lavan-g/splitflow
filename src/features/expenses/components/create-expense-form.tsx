@@ -4,6 +4,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { AuthFeedbackToast } from "@/features/auth/components/auth-feedback-toast";
+import { ExpenseSettlementSummary } from "@/features/expenses/components/expense-settlement-summary";
 import {
   createExpenseAction,
   updateExpenseAction,
@@ -13,7 +14,14 @@ import {
   type SplitPayloadEntry,
   type SplitType,
 } from "@/features/expenses/types/expense-form-state";
-import { roundCurrency } from "@/features/expenses/utils/split-calculations";
+import {
+  computeEqualSplits,
+  computePercentageSplits,
+  distributeEqualPercentages,
+  isAmountMatching,
+  roundCurrency,
+} from "@/features/expenses/utils/split-calculations";
+import { payerDisplayName } from "@/features/expenses/utils/expense-owes";
 
 type GroupOption = {
   id: string;
@@ -42,28 +50,6 @@ type CreateExpenseFormProps = {
   currentUserId: string;
   editExpense?: EditExpenseValues;
 };
-
-function computeEqualSplits(memberIds: string[], amount: number) {
-  if (memberIds.length === 0) {
-    return [];
-  }
-
-  const base = roundCurrency(amount / memberIds.length);
-  const splits = memberIds.map((userId) => ({
-    userId,
-    amount: base,
-  }));
-
-  const runningTotal = splits.reduce((sum, split) => sum + split.amount, 0);
-  const diff = roundCurrency(amount - runningTotal);
-  const lastIndex = splits.length - 1;
-  splits[lastIndex] = {
-    ...splits[lastIndex],
-    amount: roundCurrency(splits[lastIndex].amount + diff),
-  };
-
-  return splits;
-}
 
 function inferInitialSplitState(splits: SplitPayloadEntry[]) {
   if (splits.length === 0) {
@@ -121,6 +107,7 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
   const [customAmounts, setCustomAmounts] = useState<Record<string, string>>(
     initialSplit?.customAmounts ?? {},
   );
+  const [includedMembers, setIncludedMembers] = useState<Record<string, boolean>>({});
   const [removeReceipt, setRemoveReceipt] = useState(false);
   const receiptInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -134,56 +121,99 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
 
   const memberIds = useMemo(() => members.map((member) => member.userId), [members]);
 
+  useEffect(() => {
+    setIncludedMembers((previous) => {
+      const next: Record<string, boolean> = {};
+
+      for (const member of members) {
+        if (editExpense) {
+          const wasInSplit = editExpense.splits.some((split) => split.userId === member.userId);
+          next[member.userId] = previous[member.userId] ?? wasInSplit;
+        } else {
+          next[member.userId] = previous[member.userId] ?? true;
+        }
+      }
+
+      return next;
+    });
+  }, [editExpense, members]);
+
+  const includedMemberIds = useMemo(
+    () => memberIds.filter((memberId) => includedMembers[memberId] !== false),
+    [includedMembers, memberIds],
+  );
+
   const computedSplits = useMemo(() => {
-    if (!isAmountValid || memberIds.length === 0) {
+    if (!isAmountValid || includedMemberIds.length === 0) {
       return [];
     }
 
     if (splitType === "equal") {
-      return computeEqualSplits(memberIds, amount);
+      return computeEqualSplits(includedMemberIds, amount);
     }
 
     if (splitType === "percentage") {
-      const withPct = memberIds.map((userId) => {
-        const percentage = Number.parseFloat(percentages[userId] ?? "0");
-        return {
-          userId,
-          percentage: Number.isFinite(percentage) ? percentage : 0,
-        };
-      });
-
-      const rows = withPct.map((row) => ({
-        userId: row.userId,
-        percentage: row.percentage,
-        amount: roundCurrency((amount * row.percentage) / 100),
-      }));
-
-      const runningTotal = rows.reduce((sum, row) => sum + row.amount, 0);
-      const diff = roundCurrency(amount - runningTotal);
-      const lastIndex = rows.length - 1;
-      if (lastIndex >= 0) {
-        rows[lastIndex] = {
-          ...rows[lastIndex],
-          amount: roundCurrency(rows[lastIndex].amount + diff),
-        };
-      }
-      return rows;
+      return computePercentageSplits(includedMemberIds, amount, percentages);
     }
 
-    const rows = memberIds.map((userId) => ({
+    const rows = includedMemberIds.map((userId) => ({
       userId,
       amount: roundCurrency(Number.parseFloat(customAmounts[userId] ?? "0") || 0),
     }));
     return rows;
-  }, [amount, customAmounts, isAmountValid, memberIds, percentages, splitType]);
+  }, [amount, customAmounts, includedMemberIds, isAmountValid, percentages, splitType]);
+
+  function handleSplitTypeChange(nextType: SplitType) {
+    if (nextType === "percentage") {
+      setPercentages(distributeEqualPercentages(includedMemberIds));
+      setCustomAmounts({});
+    } else if (nextType === "custom") {
+      if (isAmountValid && includedMemberIds.length > 0) {
+        const equalSplits = computeEqualSplits(includedMemberIds, amount);
+        setCustomAmounts(
+          Object.fromEntries(
+            equalSplits.map((split) => [split.userId, split.amount.toFixed(2)]),
+          ),
+        );
+      } else {
+        setCustomAmounts({});
+      }
+      setPercentages({});
+    } else {
+      setPercentages({});
+      setCustomAmounts({});
+    }
+
+    setSplitType(nextType);
+  }
+
+  function handleIncludedMemberChange(userId: string, included: boolean) {
+    setIncludedMembers((previous) => ({
+      ...previous,
+      [userId]: included,
+    }));
+
+    if (!included) {
+      setPercentages((previous) => {
+        const next = { ...previous };
+        delete next[userId];
+        return next;
+      });
+      setCustomAmounts((previous) => {
+        const next = { ...previous };
+        delete next[userId];
+        return next;
+      });
+    }
+  }
 
   const percentageTotal = useMemo(
     () =>
-      members.reduce(
-        (sum, member) => sum + (Number.parseFloat(percentages[member.userId] ?? "0") || 0),
+      includedMemberIds.reduce(
+        (sum, memberId) => sum + (Number.parseFloat(percentages[memberId] ?? "0") || 0),
         0,
       ),
-    [members, percentages],
+    [includedMemberIds, percentages],
   );
 
   const splitTotal = useMemo(
@@ -192,23 +222,35 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
   );
 
   const isSplitValid = useMemo(() => {
-    if (!isAmountValid || members.length === 0) {
+    if (!isAmountValid || includedMemberIds.length === 0) {
+      return false;
+    }
+
+    if (!isAmountMatching(amount, computedSplits)) {
       return false;
     }
 
     if (splitType === "percentage") {
-      return Math.abs(percentageTotal - 100) <= 0.01 && Math.abs(splitTotal - amount) <= 0.01;
+      return Math.abs(percentageTotal - 100) <= 0.01;
     }
 
-    return Math.abs(splitTotal - amount) <= 0.01;
-  }, [amount, isAmountValid, members.length, percentageTotal, splitTotal, splitType]);
+    return true;
+  }, [amount, computedSplits, includedMemberIds.length, isAmountValid, percentageTotal, splitType]);
+
+  const effectivePaidBy = isEditing ? paidBy : currentUserId;
+  const payerMember = members.find((member) => member.userId === effectivePaidBy);
+  const payerLabel = payerDisplayName(
+    effectivePaidBy,
+    currentUserId,
+    payerMember?.fullName ?? "payer",
+  );
 
   const isFormValid =
     Boolean(groupId) &&
     title.trim().length >= 2 &&
     isAmountValid &&
-    Boolean(paidBy) &&
-    members.some((member) => member.userId === paidBy) &&
+    Boolean(effectivePaidBy) &&
+    members.some((member) => member.userId === effectivePaidBy) &&
     isSplitValid;
 
   useEffect(() => {
@@ -228,7 +270,9 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
       setNotes("");
       setPercentages({});
       setCustomAmounts({});
-      setPaidBy(selectedGroup?.members[0]?.userId ?? currentUserId);
+      setIncludedMembers(
+        Object.fromEntries(members.map((member) => [member.userId, true])),
+      );
 
       if (receiptInputRef.current) {
         receiptInputRef.current.value = "";
@@ -238,7 +282,7 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [currentUserId, editExpense, isEditing, router, selectedGroup, state.success]);
+  }, [editExpense, isEditing, members, router, state.success]);
 
   return (
     <form action={formAction} className="space-y-5">
@@ -247,7 +291,7 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
       ) : null}
       <input type="hidden" name="removeReceipt" value={removeReceipt ? "true" : "false"} />
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className={isEditing ? "grid gap-4 md:grid-cols-2" : "space-y-2"}>
         <div className="space-y-2">
           <label htmlFor="expense-group" className="text-sm font-medium text-slate-200">
             Group
@@ -264,12 +308,7 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
               id="expense-group"
               name="groupId"
               value={groupId}
-              onChange={(event) => {
-                const nextGroupId = event.target.value;
-                setGroupId(nextGroupId);
-                const firstMember = groups.find((group) => group.id === nextGroupId)?.members[0];
-                setPaidBy(firstMember?.userId ?? currentUserId);
-              }}
+              onChange={(event) => setGroupId(event.target.value)}
               className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none ring-indigo-500/50 transition focus:ring-2"
               required
             >
@@ -282,25 +321,29 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
           )}
         </div>
 
-        <div className="space-y-2">
-          <label htmlFor="expense-paid-by" className="text-sm font-medium text-slate-200">
-            Paid by
-          </label>
-          <select
-            id="expense-paid-by"
-            name="paidBy"
-            value={paidBy}
-            onChange={(event) => setPaidBy(event.target.value)}
-            className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none ring-indigo-500/50 transition focus:ring-2"
-            required
-          >
-            {members.map((member) => (
-              <option key={member.userId} value={member.userId} className="bg-slate-900">
-                {member.fullName} (@{member.username})
-              </option>
-            ))}
-          </select>
-        </div>
+        {isEditing ? (
+          <div className="space-y-2">
+            <label htmlFor="expense-paid-by" className="text-sm font-medium text-slate-200">
+              Paid by
+            </label>
+            <select
+              id="expense-paid-by"
+              name="paidBy"
+              value={paidBy}
+              onChange={(event) => setPaidBy(event.target.value)}
+              className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none ring-indigo-500/50 transition focus:ring-2"
+              required
+            >
+              {members.map((member) => (
+                <option key={member.userId} value={member.userId} className="bg-slate-900">
+                  {member.fullName} (@{member.username})
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <input type="hidden" name="paidBy" value={currentUserId} />
+        )}
       </div>
 
       <div className="space-y-2">
@@ -343,7 +386,7 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
             <button
               key={type}
               type="button"
-              onClick={() => setSplitType(type)}
+              onClick={() => handleSplitTypeChange(type)}
               className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
                 splitType === type
                   ? "border-indigo-400/50 bg-indigo-500/15 text-indigo-100"
@@ -358,16 +401,41 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
 
       <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
         <p className="text-sm font-medium text-slate-200">Members split</p>
+        <div className="hidden gap-2 text-xs font-medium uppercase tracking-wide text-slate-400 md:grid md:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <span />
+          <span>Member</span>
+          <span>Split</span>
+          <span className="text-right">Share / Owes</span>
+        </div>
         {members.map((member) => {
           const splitRow = computedSplits.find((split) => split.userId === member.userId);
+          const isIncluded = includedMembers[member.userId] !== false;
+          const isPayer = member.userId === effectivePaidBy;
+          const shareAmount = splitRow?.amount ?? 0;
 
           return (
-            <div key={member.userId} className="grid items-center gap-2 md:grid-cols-3">
+            <div
+              key={member.userId}
+              className={`grid items-center gap-2 md:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto] ${
+                isIncluded ? "" : "opacity-50"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={isIncluded}
+                onChange={(event) =>
+                  handleIncludedMemberChange(member.userId, event.target.checked)
+                }
+                className="h-4 w-4 rounded border-white/20 bg-slate-900/50 text-indigo-500"
+                aria-label={`Include ${member.fullName} in split`}
+              />
               <p className="text-sm text-slate-100">
                 {member.fullName} <span className="text-xs text-slate-300">@{member.username}</span>
               </p>
 
-              {splitType === "percentage" ? (
+              {!isIncluded ? (
+                <p className="text-sm text-slate-400 md:col-span-2">Not included</p>
+              ) : splitType === "percentage" ? (
                 <input
                   type="number"
                   min="0"
@@ -401,12 +469,33 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
                 <p className="text-sm text-slate-300">Auto-calculated</p>
               )}
 
-              <p className="text-sm font-medium text-indigo-200">
-                {splitRow ? splitRow.amount.toFixed(2) : "0.00"}
-              </p>
+              {isIncluded ? (
+                <div className="text-right">
+                  <p className="text-sm font-medium text-indigo-200">
+                    ₹{shareAmount.toFixed(2)}
+                  </p>
+                  {isSplitValid && shareAmount > 0 ? (
+                    <p
+                      className={`text-xs ${
+                        isPayer ? "text-emerald-300" : "text-amber-200"
+                      }`}
+                    >
+                      {isPayer
+                        ? "Paid full amount"
+                        : member.userId === currentUserId
+                          ? `You owe ${payerLabel}`
+                          : `Owes ${payerLabel}`}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           );
         })}
+
+        {includedMemberIds.length === 0 ? (
+          <p className="text-xs text-rose-300">Select at least one member to split with.</p>
+        ) : null}
 
         {splitType === "percentage" ? (
           <p className="text-xs text-slate-300">Percentage total: {percentageTotal.toFixed(2)}%</p>
@@ -418,6 +507,16 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
           <p className="text-xs text-rose-300">
             Split values must match the total amount.
           </p>
+        ) : null}
+
+        {isSplitValid && isAmountValid && computedSplits.length > 0 ? (
+          <ExpenseSettlementSummary
+            paidBy={effectivePaidBy}
+            currentUserId={currentUserId}
+            splits={computedSplits}
+            members={members}
+            totalAmount={amount}
+          />
         ) : null}
       </div>
 
