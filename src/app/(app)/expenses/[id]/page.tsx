@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { DeleteExpenseButton } from "@/features/expenses/components/delete-expense-button";
+import { ExpenseSettlementSummary } from "@/features/expenses/components/expense-settlement-summary";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getReceiptSignedUrl } from "@/lib/supabase/receipt-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -66,6 +67,15 @@ export default async function ExpenseDetailsPage({ params }: ExpenseDetailsPageP
   const receiptSignedUrl = expense.receipt_url
     ? await getReceiptSignedUrl(expense.receipt_url)
     : null;
+
+  const settlementMembers = allUserIds.map((userId) => {
+    const profile = profileMap.get(userId);
+    return {
+      userId,
+      fullName: profile?.full_name ?? "Unknown",
+      username: profile?.username ?? "",
+    };
+  });
 
   return (
     <main className="page-main max-w-3xl space-y-6">
@@ -174,6 +184,21 @@ export default async function ExpenseDetailsPage({ params }: ExpenseDetailsPageP
           </ul>
         )}
       </div>
+
+      {splits && splits.length > 0 ? (
+        <div className="glass-card rounded-2xl p-5">
+          <ExpenseSettlementSummary
+            paidBy={expense.paid_by}
+            currentUserId={user.id}
+            splits={splits.map((split) => ({
+              userId: split.user_id,
+              amount: Number(split.amount),
+            }))}
+            members={settlementMembers}
+            totalAmount={Number(expense.amount)}
+          />
+        </div>
+      ) : null}
     </main>
   );
 }
