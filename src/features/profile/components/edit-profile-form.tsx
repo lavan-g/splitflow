@@ -2,11 +2,11 @@
 
 import { useActionState, useEffect, useRef } from "react";
 
+import { updateProfileAction } from "@/features/profile/actions/profile-actions";
 import {
   PROFILE_FORM_INITIAL_STATE,
   type ProfileFormState,
-  updateProfileAction,
-} from "@/features/profile/actions/profile-actions";
+} from "@/features/profile/types/profile-form-state";
 
 type Props = {
   initialFullName: string;

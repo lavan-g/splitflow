@@ -3,18 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import type { ProfileFormState } from "@/features/profile/types/profile-form-state";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-
-export type ProfileFormState = {
-  success: boolean;
-  message: string;
-};
-
-export const PROFILE_FORM_INITIAL_STATE: ProfileFormState = {
-  success: false,
-  message: "",
-};
 
 const ALLOWED_AVATAR_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024;
@@ -122,12 +113,12 @@ export async function uploadAvatarAction(
     .from("profiles")
     .select("avatar_url")
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
 
   const ext = avatar.type === "image/png" ? "png" : avatar.type === "image/webp" ? "webp" : "jpg";
   const avatarPath = `${user.id}/avatar.${ext}`;
 
-  const { error: uploadError } = await supabase.storage
+  const { error: uploadError } = await admin.storage
     .from("avatars")
     .upload(avatarPath, avatar, {
       contentType: avatar.type,
@@ -135,7 +126,10 @@ export async function uploadAvatarAction(
     });
 
   if (uploadError) {
-    return { success: false, message: "Failed to upload avatar." };
+    return {
+      success: false,
+      message: uploadError.message || "Failed to upload avatar.",
+    };
   }
 
   if (profile?.avatar_url && profile.avatar_url !== avatarPath) {
@@ -148,7 +142,10 @@ export async function uploadAvatarAction(
     .eq("user_id", user.id);
 
   if (updateError) {
-    return { success: false, message: updateError.message };
+    return {
+      success: false,
+      message: updateError.message || "Failed to save avatar.",
+    };
   }
 
   revalidatePath("/profile");
@@ -174,7 +171,7 @@ export async function removeAvatarAction(
     .from("profiles")
     .select("avatar_url")
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
 
   if (profile?.avatar_url) {
     await admin.storage.from("avatars").remove([profile.avatar_url]);
