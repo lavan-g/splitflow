@@ -1,14 +1,16 @@
 "use client";
 
-import { useActionState, useRef } from "react";
+import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { UserRound } from "lucide-react";
 
 import {
-  PROFILE_FORM_INITIAL_STATE,
-  type ProfileFormState,
   removeAvatarAction,
   uploadAvatarAction,
 } from "@/features/profile/actions/profile-actions";
+import {
+  PROFILE_FORM_INITIAL_STATE,
+  type ProfileFormState,
+} from "@/features/profile/types/profile-form-state";
 
 type Props = {
   avatarUrl: string | null;
@@ -26,7 +28,47 @@ export function AvatarUpload({ avatarUrl, displayName }: Props) {
     FormData
   >(removeAvatarAction, PROFILE_FORM_INITIAL_STATE);
 
-  const feedback = uploadState.message ? uploadState : removeState.message ? removeState : null;
+  const latestFeedback = uploadState.message
+    ? uploadState
+    : removeState.message
+      ? removeState
+      : null;
+
+  const [visibleFeedback, setVisibleFeedback] = useState<ProfileFormState | null>(null);
+
+  useEffect(() => {
+    if (!latestFeedback?.message) {
+      return;
+    }
+
+    setVisibleFeedback(latestFeedback);
+
+    if (!latestFeedback.success) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setVisibleFeedback(null);
+    }, 3000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [latestFeedback]);
+
+  function handleAvatarSelect(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("avatar", file);
+    startTransition(() => {
+      uploadAction(formData);
+    });
+    event.target.value = "";
+  }
 
   return (
     <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
@@ -52,28 +94,22 @@ export function AvatarUpload({ avatarUrl, displayName }: Props) {
         </div>
 
         <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
-          <form action={uploadAction}>
-            <input
-              ref={fileRef}
-              type="file"
-              name="avatar"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files?.[0]) {
-                  e.target.form?.requestSubmit();
-                }
-              }}
-            />
-            <button
-              type="button"
-              disabled={isUploading || isRemoving}
-              onClick={() => fileRef.current?.click()}
-              className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
-            >
-              {isUploading ? "Uploading…" : "Upload photo"}
-            </button>
-          </form>
+          <input
+            ref={fileRef}
+            type="file"
+            name="avatar"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={handleAvatarSelect}
+          />
+          <button
+            type="button"
+            disabled={isUploading || isRemoving}
+            onClick={() => fileRef.current?.click()}
+            className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
+          >
+            {isUploading ? "Uploading…" : "Upload photo"}
+          </button>
 
           {avatarUrl && (
             <form action={removeAction}>
@@ -88,11 +124,11 @@ export function AvatarUpload({ avatarUrl, displayName }: Props) {
           )}
         </div>
 
-        {feedback?.message && (
+        {visibleFeedback?.message && (
           <p
-            className={`text-sm ${feedback.success ? "text-emerald-400" : "text-rose-300"}`}
+            className={`text-sm ${visibleFeedback.success ? "text-emerald-400" : "text-rose-300"}`}
           >
-            {feedback.message}
+            {visibleFeedback.message}
           </p>
         )}
       </div>
