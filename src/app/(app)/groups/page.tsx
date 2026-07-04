@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { GroupCardActions } from "@/features/groups/components/group-card-actions";
 import { CreateGroupForm } from "@/features/groups/components/create-group-form";
 import { JoinGroupForm } from "@/features/groups/components/join-group-form";
+import { GROUP_CODE_PATTERN } from "@/lib/constants/ids";
+import { getGroupInvitePath } from "@/lib/navigation/safe-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type GroupsPageProps = {
@@ -11,6 +14,11 @@ type GroupsPageProps = {
 
 export default async function GroupsPage({ searchParams }: GroupsPageProps) {
   const { code, delete: deleteStatus } = await searchParams;
+
+  if (code && GROUP_CODE_PATTERN.test(code.trim().toUpperCase())) {
+    redirect(getGroupInvitePath(code.trim()));
+  }
+
   const supabase = await createSupabaseServerClient();
 
   const {

@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
+  addMemberByUserIdSchema,
   addMemberByUsernameSchema,
   createGroupSchema,
   joinGroupSchema,
@@ -75,18 +76,28 @@ export async function createGroupAction(
   };
 }
 
-export async function joinGroupAction(
-  _prevState: GroupFormState,
-  formData: FormData,
-): Promise<GroupFormState> {
-  const parsed = joinGroupSchema.safeParse({
-    groupCode: formData.get("groupCode"),
-  });
+export type JoinGroupResult =
+  | {
+      ok: true;
+      groupId: string;
+      groupName: string;
+      alreadyMember: boolean;
+      message: string;
+    }
+  | {
+      ok: false;
+      reason: "invalid" | "not_found" | "unauthenticated" | "error";
+      message: string;
+    };
+
+export async function joinGroupByInviteCode(groupCode: string): Promise<JoinGroupResult> {
+  const parsed = joinGroupSchema.safeParse({ groupCode });
 
   if (!parsed.success) {
     return {
-      success: false,
-      message: parsed.error.issues[0]?.message ?? "Invalid group code.",
+      ok: false,
+      reason: "invalid",
+      message: parsed.error.issues[0]?.message ?? "Invalid group invite link.",
     };
   }
 
@@ -97,23 +108,41 @@ export async function joinGroupAction(
 
   if (!user) {
     return {
-      success: false,
-      message: "You must be signed in.",
+      ok: false,
+      reason: "unauthenticated",
+      message: "You must be signed in to join a group.",
     };
   }
 
-  // Use admin client so RLS doesn't block non-members from finding a group by code.
-  const adminClient = createSupabaseAdminClient();
-  const { data: group, error: groupError } = await adminClient
+  const admin = createSupabaseAdminClient();
+  const { data: group, error: groupError } = await admin
     .from("groups")
-    .select("id")
-    .eq("group_code", parsed.data.groupCode.toUpperCase())
+    .select("id, name")
+    .eq("group_code", parsed.data.groupCode)
     .maybeSingle();
 
   if (groupError || !group) {
     return {
-      success: false,
-      message: "Group not found. Check the code and try again.",
+      ok: false,
+      reason: "not_found",
+      message: "Group not found. The invite link may be invalid or expired.",
+    };
+  }
+
+  const { data: existingMembership } = await admin
+    .from("group_members")
+    .select("id")
+    .eq("group_id", group.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existingMembership) {
+    return {
+      ok: true,
+      groupId: group.id,
+      groupName: group.name,
+      alreadyMember: true,
+      message: "You are already a member of this group.",
     };
   }
 
@@ -123,14 +152,10 @@ export async function joinGroupAction(
   });
 
   if (membershipError) {
-    const isAlreadyMember = membershipError.message
-      .toLowerCase()
-      .includes("duplicate key");
     return {
-      success: !isAlreadyMember,
-      message: isAlreadyMember
-        ? "You are already a member of this group."
-        : membershipError.message,
+      ok: false,
+      reason: "error",
+      message: membershipError.message,
     };
   }
 
@@ -138,8 +163,31 @@ export async function joinGroupAction(
   revalidatePath(`/groups/${group.id}`);
 
   return {
+    ok: true,
+    groupId: group.id,
+    groupName: group.name,
+    alreadyMember: false,
+    message: `Joined ${group.name} successfully.`,
+  };
+}
+
+export async function joinGroupAction(
+  _prevState: GroupFormState,
+  formData: FormData,
+): Promise<GroupFormState> {
+  const groupCode = String(formData.get("groupCode") ?? "");
+  const result = await joinGroupByInviteCode(groupCode);
+
+  if (!result.ok) {
+    return {
+      success: false,
+      message: result.message,
+    };
+  }
+
+  return {
     success: true,
-    message: "Joined group successfully.",
+    message: result.message,
   };
 }
 
@@ -185,9 +233,11 @@ export async function addMemberToGroupAction(
   formData: FormData,
 ): Promise<GroupFormState> {
   const groupId = String(formData.get("groupId") ?? "");
-  const parsed = addMemberByUsernameSchema.safeParse({
-    username: formData.get("username"),
-  });
+  const userIdInput = formData.get("userId");
+  const usernameInput = formData.get("username");
+
+  const parsedByUserId = addMemberByUserIdSchema.safeParse({ userId: userIdInput });
+  const parsedByUsername = addMemberByUsernameSchema.safeParse({ username: usernameInput });
 
   if (!groupId) {
     return {
@@ -196,10 +246,10 @@ export async function addMemberToGroupAction(
     };
   }
 
-  if (!parsed.success) {
+  if (!parsedByUserId.success && !parsedByUsername.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Invalid username.",
+      message: "Select a user to add.",
     };
   }
 
@@ -215,17 +265,39 @@ export async function addMemberToGroupAction(
     };
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("user_id, username, full_name")
-    .eq("username", parsed.data.username)
+  const { data: callerMembership } = await supabase
+    .from("group_members")
+    .select("id")
+    .eq("group_id", groupId)
+    .eq("user_id", user.id)
     .maybeSingle();
+
+  if (!callerMembership) {
+    return {
+      success: false,
+      message: "You must be a group member to add people.",
+    };
+  }
+
+  const admin = createSupabaseAdminClient();
+
+  const { data: profile, error: profileError } = parsedByUserId.success
+    ? await admin
+        .from("profiles")
+        .select("user_id, username, full_name")
+        .eq("user_id", parsedByUserId.data.userId)
+        .maybeSingle()
+    : await admin
+        .from("profiles")
+        .select("user_id, username, full_name")
+        .eq("username", parsedByUsername.data!.username)
+        .maybeSingle();
 
   if (profileError || !profile) {
     return {
       success: false,
       message:
-        "User is not registered yet. Ask them to create an account first, then add by username.",
+        "User is not registered yet. Ask them to create an account first, then add by username or ID.",
     };
   }
 
@@ -236,20 +308,29 @@ export async function addMemberToGroupAction(
     };
   }
 
+  const { data: existingMembership } = await admin
+    .from("group_members")
+    .select("id")
+    .eq("group_id", groupId)
+    .eq("user_id", profile.user_id)
+    .maybeSingle();
+
+  if (existingMembership) {
+    return {
+      success: false,
+      message: "This user is already in the group.",
+    };
+  }
+
   const { error: membershipError } = await supabase.from("group_members").insert({
     group_id: groupId,
     user_id: profile.user_id,
   });
 
   if (membershipError) {
-    const isAlreadyMember = membershipError.message
-      .toLowerCase()
-      .includes("duplicate key");
     return {
-      success: !isAlreadyMember,
-      message: isAlreadyMember
-        ? "This user is already in the group."
-        : membershipError.message,
+      success: false,
+      message: membershipError.message,
     };
   }
 

@@ -2,19 +2,7 @@
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { USER_ID_PATTERN } from "@/lib/constants/ids";
-
-export type UserSearchResult = {
-  userId: string;
-  fullName: string;
-  username: string;
-  uniqueId: string;
-};
-
-export type UserSearchState =
-  | { status: "idle" }
-  | { status: "found"; user: UserSearchResult }
-  | { status: "not_found"; message: string }
-  | { status: "error"; message: string };
+import type { UserSearchState } from "@/features/groups/types/user-search-state";
 
 export async function searchUserAction(
   _prevState: UserSearchState,

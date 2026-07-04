@@ -8,6 +8,7 @@ import {
 import { GroupBannerActions } from "@/features/groups/components/group-banner-actions";
 import { CopyCodeButton } from "@/features/groups/components/copy-code-button";
 import { RemoveMemberButton } from "@/features/groups/components/remove-member-button";
+import { ShareInviteLink } from "@/features/groups/components/share-invite-link";
 import { UserSearchAndAdd } from "@/features/groups/components/user-search-and-add";
 import { leaveGroupAction } from "@/features/groups/actions/group-actions";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -15,10 +16,15 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type GroupDetailsPageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ joined?: string }>;
 };
 
-export default async function GroupDetailsPage({ params }: GroupDetailsPageProps) {
+export default async function GroupDetailsPage({
+  params,
+  searchParams,
+}: GroupDetailsPageProps) {
   const { id } = await params;
+  const { joined } = await searchParams;
   const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdminClient();
 
@@ -129,9 +135,20 @@ export default async function GroupDetailsPage({ params }: GroupDetailsPageProps
     : { data: [] };
 
   const netPositive = groupBalance.netBalance >= 0;
+  const joinedMessage =
+    joined === "1"
+      ? "You joined this group successfully."
+      : joined === "already"
+        ? "You are already a member of this group."
+        : null;
 
   return (
     <main className="page-main max-w-4xl space-y-6">
+      {joinedMessage ? (
+        <div className="rounded-xl bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-400">
+          {joinedMessage}
+        </div>
+      ) : null}
       {/* Banner */}
       <div className="glass-card rounded-2xl p-5 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -252,11 +269,8 @@ export default async function GroupDetailsPage({ params }: GroupDetailsPageProps
             ))}
           </ul>
 
-          <div className="mt-4 border-t border-white/10 pt-4">
-            <p className="mb-2 text-xs text-slate-400">
-              Search by username or{" "}
-              <span className="font-mono text-indigo-300">SF-XXXXXX</span>
-            </p>
+          <div className="mt-4 space-y-4 border-t border-white/10 pt-4">
+            <ShareInviteLink groupCode={group.group_code} />
             <UserSearchAndAdd
               groupId={group.id}
               currentUserId={user.id}

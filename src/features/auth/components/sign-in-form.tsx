@@ -12,7 +12,11 @@ import {
   isValidGmail,
 } from "@/features/auth/utils/gmail-validation";
 
-export function SignInForm() {
+type SignInFormProps = {
+  redirectTo?: string;
+};
+
+export function SignInForm({ redirectTo }: SignInFormProps) {
   const [state, formAction, isPending] = useActionState(
     signInAction,
     AUTH_FORM_INITIAL_STATE,
@@ -27,6 +31,7 @@ export function SignInForm() {
 
   return (
     <form action={formAction} className="mt-6 space-y-4">
+      {redirectTo ? <input type="hidden" name="next" value={redirectTo} /> : null}
       <div className="space-y-2">
         <label htmlFor="email" className="text-sm font-medium text-slate-200">
           Email
@@ -102,7 +107,7 @@ export function SignInForm() {
           Forgot password?
         </Link>
         <Link
-          href="/signup"
+          href={redirectTo ? `/signup?next=${encodeURIComponent(redirectTo)}` : "/signup"}
           className={
             state.showCreateAccountCta
               ? "rounded-md bg-indigo-500/20 px-2 py-1 font-semibold text-indigo-200 ring-1 ring-indigo-400/50 transition hover:bg-indigo-500/30"
