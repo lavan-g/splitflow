@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 
 import { AuthFeedbackToast } from "@/features/auth/components/auth-feedback-toast";
 import { deleteGroupAction } from "@/features/groups/actions/group-actions";
+import { getGroupInvitePath } from "@/lib/navigation/safe-redirect";
 
 type GroupBannerActionsProps = {
   groupCode: string;
@@ -26,14 +27,14 @@ export function GroupBannerActions({
   } | null>(null);
 
   async function handleShare() {
-    const inviteUrl = `${window.location.origin}/groups?code=${groupCode}`;
+    const inviteUrl = `${window.location.origin}${getGroupInvitePath(groupCode)}`;
 
     try {
       await navigator.clipboard.writeText(inviteUrl);
 
       setFeedback({
         success: true,
-        message: "Copied",
+        message: "Invite link copied",
       });
       detailsRef.current?.removeAttribute("open");
     } catch {

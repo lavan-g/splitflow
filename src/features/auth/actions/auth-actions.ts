@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getSafeRedirectPath } from "@/lib/navigation/safe-redirect";
 import {
   forgotPasswordSchema,
   signInSchema,
@@ -61,7 +62,7 @@ export async function signInAction(
     };
   }
 
-  redirect("/dashboard");
+  redirect(getSafeRedirectPath(String(formData.get("next") ?? "")) ?? "/dashboard");
 }
 
 export async function signUpAction(
@@ -125,7 +126,7 @@ export async function signUpAction(
   }
 
   if (data.session) {
-    redirect("/dashboard");
+    redirect(getSafeRedirectPath(String(formData.get("next") ?? "")) ?? "/dashboard");
   }
 
   redirect(`/signup/confirm?email=${encodeURIComponent(parsed.data.email)}`);

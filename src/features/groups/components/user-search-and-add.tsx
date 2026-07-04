@@ -1,16 +1,16 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState } from "react";
 
-import {
-  searchUserAction,
-  type UserSearchResult,
-  type UserSearchState,
-} from "@/features/groups/actions/search-user-action";
 import { addMemberToGroupAction } from "@/features/groups/actions/group-actions";
+import { searchUserAction } from "@/features/groups/actions/search-user-action";
 import { type GroupFormState } from "@/features/groups/types/group-form-state";
+import {
+  USER_SEARCH_INITIAL,
+  type UserSearchResult,
+} from "@/features/groups/types/user-search-state";
 
-const SEARCH_INITIAL: UserSearchState = { status: "idle" };
 const ADD_INITIAL: GroupFormState = { success: false, message: "" };
 
 type Props = {
@@ -19,10 +19,15 @@ type Props = {
   existingMemberIds: string[];
 };
 
-export function UserSearchAndAdd({ groupId, currentUserId, existingMemberIds }: Props) {
+export function UserSearchAndAdd({
+  groupId,
+  currentUserId,
+  existingMemberIds,
+}: Props) {
+  const router = useRouter();
   const [searchState, searchAction, isSearching] = useActionState(
     searchUserAction,
-    SEARCH_INITIAL,
+    USER_SEARCH_INITIAL,
   );
   const [addState, addAction, isAdding] = useActionState(
     addMemberToGroupAction,
@@ -30,42 +35,65 @@ export function UserSearchAndAdd({ groupId, currentUserId, existingMemberIds }: 
   );
 
   const [query, setQuery] = useState("");
-  const [confirmedUser, setConfirmedUser] = useState<UserSearchResult | null>(null);
+  const [foundUser, setFoundUser] = useState<UserSearchResult | null>(null);
+  const [visibleAddMessage, setVisibleAddMessage] = useState<GroupFormState | null>(null);
   const searchFormRef = useRef<HTMLFormElement>(null);
 
-  // When a user is found, store it so we can show the card
   useEffect(() => {
     if (searchState.status === "found") {
-      setConfirmedUser(searchState.user);
+      setFoundUser(searchState.user);
     }
   }, [searchState]);
 
-  // After successful add, reset everything
   useEffect(() => {
-    if (addState.success) {
-      setConfirmedUser(null);
-      setQuery("");
-      searchFormRef.current?.reset();
+    if (!addState.message) {
+      return;
     }
-  }, [addState]);
 
-  const foundUser = searchState.status === "found" ? searchState.user : null;
+    setVisibleAddMessage(addState);
+
+    if (!addState.success) {
+      return;
+    }
+
+    setFoundUser(null);
+    setQuery("");
+    searchFormRef.current?.reset();
+    router.refresh();
+
+    const timeoutId = window.setTimeout(() => {
+      setVisibleAddMessage(null);
+    }, 3000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [addState, router]);
+
   const isAlreadyMember =
     foundUser !== null &&
     (existingMemberIds.includes(foundUser.userId) || foundUser.userId === currentUserId);
 
   return (
     <div className="space-y-3">
-      {/* Search input */}
+      <div>
+        <h3 className="text-sm font-medium text-slate-200">Add people</h3>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Search by username or{" "}
+          <span className="font-mono text-indigo-300">SF-XXXXXX</span>, or share the invite link
+          above for them to join automatically.
+        </p>
+      </div>
+
       <form ref={searchFormRef} action={searchAction} className="flex gap-2">
         <input
           name="query"
           type="text"
           value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            // Clear previous result when user changes the query
-            if (confirmedUser) setConfirmedUser(null);
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setFoundUser(null);
+            setVisibleAddMessage(null);
           }}
           placeholder="Username or SF-XXXXXX"
           className="min-w-0 flex-1 rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none ring-indigo-500/50 transition placeholder:text-slate-500 focus:ring-2"
@@ -79,21 +107,18 @@ export function UserSearchAndAdd({ groupId, currentUserId, existingMemberIds }: 
         </button>
       </form>
 
-      {/* Search error / not found */}
       {(searchState.status === "not_found" || searchState.status === "error") && (
         <p className="text-xs text-rose-300">{searchState.message}</p>
       )}
 
-      {/* Found user card */}
       {foundUser && (
         <div className="rounded-xl border border-white/10 bg-white/5 p-3">
           <div className="flex items-center justify-between gap-3">
-            {/* Avatar initials */}
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-semibold text-white">
                 {foundUser.fullName
                   .split(" ")
-                  .map((n) => n[0])
+                  .map((name) => name[0])
                   .join("")
                   .toUpperCase()
                   .slice(0, 2)}
@@ -107,13 +132,12 @@ export function UserSearchAndAdd({ groupId, currentUserId, existingMemberIds }: 
               </div>
             </div>
 
-            {/* Add button */}
             {isAlreadyMember ? (
               <span className="text-xs text-slate-500">Already a member</span>
             ) : (
               <form action={addAction}>
                 <input type="hidden" name="groupId" value={groupId} />
-                <input type="hidden" name="username" value={foundUser.username} />
+                <input type="hidden" name="userId" value={foundUser.userId} />
                 <button
                   type="submit"
                   disabled={isAdding}
@@ -124,16 +148,15 @@ export function UserSearchAndAdd({ groupId, currentUserId, existingMemberIds }: 
               </form>
             )}
           </div>
-
-          {/* Add feedback */}
-          {addState.message && (
-            <p
-              className={`mt-2 text-xs ${addState.success ? "text-emerald-400" : "text-rose-300"}`}
-            >
-              {addState.message}
-            </p>
-          )}
         </div>
+      )}
+
+      {visibleAddMessage?.message && (
+        <p
+          className={`text-xs ${visibleAddMessage.success ? "text-emerald-400" : "text-rose-300"}`}
+        >
+          {visibleAddMessage.message}
+        </p>
       )}
     </div>
   );

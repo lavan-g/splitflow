@@ -29,3 +29,7 @@ export const addMemberByUsernameSchema = z.object({
     .max(20, "Enter a valid username.")
     .regex(/^[a-z0-9_]+$/, "Use letters, numbers, and underscores only."),
 });
+
+export const addMemberByUserIdSchema = z.object({
+  userId: z.string().uuid("Invalid user."),
+});
