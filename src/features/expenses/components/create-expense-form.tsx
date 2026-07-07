@@ -4,7 +4,6 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { AuthFeedbackToast } from "@/features/auth/components/auth-feedback-toast";
-import { ExpenseSettlementSummary } from "@/features/expenses/components/expense-settlement-summary";
 import {
   createExpenseAction,
   updateExpenseAction,
@@ -109,6 +108,7 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
   );
   const [includedMembers, setIncludedMembers] = useState<Record<string, boolean>>({});
   const [removeReceipt, setRemoveReceipt] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
   const receiptInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedGroup = useMemo(
@@ -252,6 +252,16 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
     Boolean(effectivePaidBy) &&
     members.some((member) => member.userId === effectivePaidBy) &&
     isSplitValid;
+
+  useEffect(() => {
+    if (!state.message) {
+      return;
+    }
+
+    setToastVisible(true);
+    const dismissId = window.setTimeout(() => setToastVisible(false), 3000);
+    return () => window.clearTimeout(dismissId);
+  }, [state.message]);
 
   useEffect(() => {
     if (!state.success) {
@@ -399,7 +409,7 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
         </div>
       </div>
 
-      <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
+      {isAmountValid ? <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
         <p className="text-sm font-medium text-slate-200">Members split</p>
         <div className="hidden gap-2 text-xs font-medium uppercase tracking-wide text-slate-400 md:grid md:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto]">
           <span />
@@ -509,16 +519,7 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
           </p>
         ) : null}
 
-        {isSplitValid && isAmountValid && computedSplits.length > 0 ? (
-          <ExpenseSettlementSummary
-            paidBy={effectivePaidBy}
-            currentUserId={currentUserId}
-            splits={computedSplits}
-            members={members}
-            totalAmount={amount}
-          />
-        ) : null}
-      </div>
+      </div> : null}
 
       <div className="space-y-2">
         <label htmlFor="expense-notes" className="text-sm font-medium text-slate-200">
@@ -570,7 +571,7 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
       <input type="hidden" name="splitType" value={splitType} />
       <input type="hidden" name="splitsPayload" value={JSON.stringify(computedSplits)} />
 
-      {state.message ? (
+      {toastVisible && state.message ? (
         <AuthFeedbackToast message={state.message} success={state.success} />
       ) : null}
 
