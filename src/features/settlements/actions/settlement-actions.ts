@@ -58,6 +58,7 @@ export async function createSettlementAction(
 
   revalidatePath("/settlements");
   revalidatePath("/dashboard");
+  revalidatePath("/groups", "layout");
 
   return {
     ...SETTLEMENT_FORM_INITIAL_STATE,

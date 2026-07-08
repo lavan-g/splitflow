@@ -72,8 +72,21 @@ export default async function DashboardPage() {
     };
   });
 
-  const balance = calculateUserBalance(user.id, normalisedSplits);
-  const peerBalances = calculatePeerBalances(user.id, normalisedSplits, peerProfiles ?? []);
+  // Fetch all settled settlements involving this user
+  const { data: settlementsRaw } = await admin
+    .from("settlements")
+    .select("payer_id, receiver_id, amount")
+    .eq("status", "settled")
+    .or(`payer_id.eq.${user.id},receiver_id.eq.${user.id}`);
+
+  const settlements = (settlementsRaw ?? []).map((s) => ({
+    payer_id: s.payer_id,
+    receiver_id: s.receiver_id,
+    amount: Number(s.amount),
+  }));
+
+  const balance = calculateUserBalance(user.id, normalisedSplits, settlements);
+  const peerBalances = calculatePeerBalances(user.id, normalisedSplits, peerProfiles ?? [], settlements);
 
   // Recent expenses across all groups
   const { data: recentExpenses } = groupIds.length

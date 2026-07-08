@@ -103,7 +103,22 @@ export default async function GroupDetailsPage({
     })
     .filter((s): s is NonNullable<typeof s> => s !== null);
 
-  const groupBalance = calculateUserBalance(user.id, normalisedSplits);
+  // Fetch settled settlements between the current user and group members
+  const { data: settlementsRaw } = memberUserIds.length
+    ? await admin
+        .from("settlements")
+        .select("payer_id, receiver_id, amount")
+        .eq("status", "settled")
+        .or(`payer_id.eq.${user.id},receiver_id.eq.${user.id}`)
+    : { data: [] };
+
+  // Only count settlements between people in this group
+  const memberSet = new Set(memberUserIds);
+  const settlements = (settlementsRaw ?? [])
+    .filter((s) => memberSet.has(s.payer_id) && memberSet.has(s.receiver_id))
+    .map((s) => ({ payer_id: s.payer_id, receiver_id: s.receiver_id, amount: Number(s.amount) }));
+
+  const groupBalance = calculateUserBalance(user.id, normalisedSplits, settlements);
 
   const balancePeerIds = [
     ...new Set([
@@ -123,6 +138,7 @@ export default async function GroupDetailsPage({
     user.id,
     normalisedSplits,
     balancePeerProfiles ?? [],
+    settlements,
   );
 
   const recentExpenses = (allExpenses ?? []).slice(0, 10);
