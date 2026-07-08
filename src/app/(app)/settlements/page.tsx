@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 
 import { calculatePeerBalances } from "@/features/balance/utils/calculate-balances";
 import { CreateSettlementForm } from "@/features/settlements/components/create-settlement-form";
-import { markSettledAction } from "@/features/settlements/actions/settlement-actions";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -183,18 +182,6 @@ export default async function SettlementsPage() {
                           {iAmPayer ? "-" : "+"}₹{Number(s.amount).toFixed(2)}
                         </span>
 
-                        {/* Only the receiver (person who is owed) can confirm settlement */}
-                        {!iAmPayer && (
-                          <form action={markSettledAction}>
-                            <input type="hidden" name="settlementId" value={s.id} />
-                            <button
-                              type="submit"
-                              className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20"
-                            >
-                              Confirm
-                            </button>
-                          </form>
-                        )}
                       </div>
                     </li>
                   );
