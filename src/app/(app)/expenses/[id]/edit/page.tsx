@@ -21,7 +21,7 @@ export default async function EditExpensePage({ params }: EditExpensePageProps) 
 
   const { data: expense, error } = await admin
     .from("expenses")
-    .select("id, title, notes, amount, paid_by, group_id, receipt_url")
+    .select("id, title, notes, amount, paid_by, group_id, receipt_url, created_at")
     .eq("id", id)
     .single();
 
@@ -108,6 +108,7 @@ export default async function EditExpensePage({ params }: EditExpensePageProps) 
               amount: Number(s.amount),
             })),
             hasReceipt: Boolean(expense.receipt_url),
+            expenseDate: expense.created_at.slice(0, 10),
           }}
         />
       </div>

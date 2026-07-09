@@ -311,7 +311,7 @@ export default async function GroupDetailsPage({
         <div className="glass-card rounded-2xl p-5">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-semibold text-white">Recent expenses</h2>
-            <Link href="/expenses/new" className="text-xs text-indigo-300 hover:underline">
+            <Link href={`/expenses/new?group=${group.id}`} className="text-xs text-indigo-300 hover:underline">
               Add expense →
             </Link>
           </div>

@@ -150,6 +150,7 @@ export async function createExpenseAction(
     notes: formData.get("notes"),
     splitType: formData.get("splitType"),
     splits: splitPayload,
+    expenseDate: formData.get("expenseDate"),
   });
 
   if (!parsed.success) {
@@ -182,6 +183,10 @@ export async function createExpenseAction(
     return { success: false, message: receiptError };
   }
 
+  const expenseCreatedAt = parsed.data.expenseDate
+    ? new Date(parsed.data.expenseDate + "T00:00:00.000Z").toISOString()
+    : undefined;
+
   const { data: expense, error: expenseError } = await supabase
     .from("expenses")
     .insert({
@@ -191,6 +196,7 @@ export async function createExpenseAction(
       paid_by: parsed.data.paidBy,
       notes: parsed.data.notes || null,
       receipt_url: receiptPath,
+      ...(expenseCreatedAt ? { created_at: expenseCreatedAt } : {}),
     })
     .select("id")
     .single();
@@ -246,6 +252,7 @@ export async function updateExpenseAction(
     notes: formData.get("notes"),
     splitType: formData.get("splitType"),
     splits: splitPayload,
+    expenseDate: formData.get("expenseDate"),
   });
 
   if (!parsed.success) {
@@ -306,6 +313,10 @@ export async function updateExpenseAction(
     receiptUrl = null;
   }
 
+  const expenseCreatedAt = parsed.data.expenseDate
+    ? new Date(parsed.data.expenseDate + "T00:00:00.000Z").toISOString()
+    : undefined;
+
   const { error: expenseError } = await supabase
     .from("expenses")
     .update({
@@ -314,6 +325,7 @@ export async function updateExpenseAction(
       paid_by: parsed.data.paidBy,
       notes: parsed.data.notes || null,
       receipt_url: receiptUrl,
+      ...(expenseCreatedAt ? { created_at: expenseCreatedAt } : {}),
     })
     .eq("id", parsed.data.expenseId);
 
