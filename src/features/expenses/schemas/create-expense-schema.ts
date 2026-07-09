@@ -23,6 +23,11 @@ export const createExpenseSchema = z.object({
     .or(z.literal("")),
   splitType: z.enum(["equal", "percentage", "custom"]),
   splits: z.array(splitPayloadEntrySchema).min(1, "At least one split is required."),
+  expenseDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format.")
+    .optional()
+    .or(z.literal("")),
 });
 
 export const updateExpenseSchema = createExpenseSchema.extend({

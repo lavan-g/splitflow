@@ -42,12 +42,14 @@ type EditExpenseValues = {
   notes: string;
   splits: SplitPayloadEntry[];
   hasReceipt: boolean;
+  expenseDate: string;
 };
 
 type CreateExpenseFormProps = {
   groups: GroupOption[];
   currentUserId: string;
   editExpense?: EditExpenseValues;
+  defaultGroupId?: string;
 };
 
 function inferInitialSplitState(splits: SplitPayloadEntry[]) {
@@ -82,7 +84,7 @@ function inferInitialSplitState(splits: SplitPayloadEntry[]) {
   };
 }
 
-export function CreateExpenseForm({ groups, currentUserId, editExpense }: CreateExpenseFormProps) {
+export function CreateExpenseForm({ groups, currentUserId, editExpense, defaultGroupId }: CreateExpenseFormProps) {
   const router = useRouter();
   const isEditing = Boolean(editExpense);
   const initialSplit = editExpense ? inferInitialSplitState(editExpense.splits) : null;
@@ -92,7 +94,16 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
     EXPENSE_FORM_INITIAL_STATE,
   );
 
-  const [groupId, setGroupId] = useState(editExpense?.groupId ?? groups[0]?.id ?? "");
+  const [groupId, setGroupId] = useState(() => {
+    if (editExpense?.groupId) return editExpense.groupId;
+    if (defaultGroupId && groups.some((g) => g.id === defaultGroupId)) return defaultGroupId;
+    return groups[0]?.id ?? "";
+  });
+  const [expenseDate, setExpenseDate] = useState(() => {
+    if (editExpense?.expenseDate) return editExpense.expenseDate;
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
   const [title, setTitle] = useState(editExpense?.title ?? "");
   const [amountInput, setAmountInput] = useState(
     editExpense ? editExpense.amount.toFixed(2) : "",
@@ -283,6 +294,8 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
       setIncludedMembers(
         Object.fromEntries(members.map((member) => [member.userId, true])),
       );
+      const d = new Date();
+      setExpenseDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
 
       if (receiptInputRef.current) {
         receiptInputRef.current.value = "";
@@ -371,22 +384,39 @@ export function CreateExpenseForm({ groups, currentUserId, editExpense }: Create
         />
       </div>
 
-      <div className="space-y-2">
-        <label htmlFor="expense-amount" className="text-sm font-medium text-slate-200">
-          Amount
-        </label>
-        <input
-          id="expense-amount"
-          name="amount"
-          type="number"
-          min="0.01"
-          step="0.01"
-          required
-          value={amountInput}
-          onChange={(event) => setAmountInput(event.target.value)}
-          className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none ring-indigo-500/50 transition focus:ring-2"
-          placeholder="0.00"
-        />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <label htmlFor="expense-amount" className="text-sm font-medium text-slate-200">
+            Amount
+          </label>
+          <input
+            id="expense-amount"
+            name="amount"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+            value={amountInput}
+            onChange={(event) => setAmountInput(event.target.value)}
+            className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none ring-indigo-500/50 transition focus:ring-2"
+            placeholder="0.00"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="expense-date" className="text-sm font-medium text-slate-200">
+            Date
+          </label>
+          <input
+            id="expense-date"
+            name="expenseDate"
+            type="date"
+            required
+            value={expenseDate}
+            onChange={(event) => setExpenseDate(event.target.value)}
+            className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none ring-indigo-500/50 transition focus:ring-2 [color-scheme:dark]"
+          />
+        </div>
       </div>
 
       <div className="space-y-2">

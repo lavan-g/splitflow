@@ -3,7 +3,12 @@ import { redirect } from "next/navigation";
 import { CreateExpenseForm } from "@/features/expenses/components/create-expense-form";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export default async function NewExpensePage() {
+type NewExpensePageProps = {
+  searchParams: Promise<{ group?: string }>;
+};
+
+export default async function NewExpensePage({ searchParams }: NewExpensePageProps) {
+  const { group: preselectedGroupId } = await searchParams;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -83,7 +88,11 @@ export default async function NewExpensePage() {
         <p className="mb-6 text-sm text-slate-400">
           Fill in the details and choose how to split.
         </p>
-        <CreateExpenseForm groups={groupsWithMembers} currentUserId={user.id} />
+        <CreateExpenseForm
+          groups={groupsWithMembers}
+          currentUserId={user.id}
+          defaultGroupId={preselectedGroupId}
+        />
       </div>
     </main>
   );
