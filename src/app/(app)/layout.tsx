@@ -4,6 +4,7 @@ import { CircleUserRound } from "lucide-react";
 
 import { signOutAction } from "@/features/auth/actions/auth-actions";
 import { RealtimeRefresher } from "@/features/realtime/components/realtime-refresher";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { getAvatarPublicUrl } from "@/lib/supabase/avatar-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -54,6 +55,8 @@ export default async function AppLayout({
               </Link>
             ))}
           </nav>
+
+          <ThemeToggle />
 
           <details className="group relative shrink-0">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-2 py-1.5 text-sm text-slate-100 transition hover:bg-white/10 sm:px-3">

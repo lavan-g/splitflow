@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+/* Dark theme (default) */
 :root {
   --background: #0f172a;
   --foreground: #e2e8f0;
@@ -7,6 +8,13 @@
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #ef4444;
+}
+
+/* Light theme overrides */
+.light {
+  --background: #f1f5f9;
+  --foreground: #0f172a;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -29,11 +37,22 @@ body {
   background-attachment: fixed;
 }
 
+.light body {
+  background-image:
+    radial-gradient(at 0% 0%, rgb(99 102 241 / 8%) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgb(34 197 94 / 4%) 0px, transparent 50%);
+}
+
 .glass-card {
   background: rgb(255 255 255 / 6%);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgb(255 255 255 / 12%);
+}
+
+.light .glass-card {
+  background: rgba(255, 255, 255, 0.75);
+  border-color: rgba(0, 0, 0, 0.08);
 }
 
 .scrollbar-none {
@@ -56,3 +75,47 @@ body {
 .page-title {
   @apply text-xl font-semibold text-white sm:text-2xl;
 }
+
+/* =====================================================
+   LIGHT THEME — Tailwind utility overrides
+   These win over @layer utilities via cascade priority.
+   ===================================================== */
+
+/* --- Text colors --- */
+.light .text-white     { color: #0f172a; }
+.light .text-slate-100 { color: #1e293b; }
+.light .text-slate-200 { color: #334155; }
+.light .text-slate-300 { color: #475569; }
+.light .text-slate-400 { color: #64748b; }
+.light .text-slate-500 { color: #94a3b8; }
+.light .text-slate-600 { color: #94a3b8; }
+.light .page-title     { color: #0f172a; }
+
+/* Keep semantic/accent colors unchanged in light mode */
+/* text-indigo-*, text-emerald-*, text-rose-*, text-amber-* left as-is */
+
+/* --- Backgrounds: semi-transparent whites → semi-transparent darks --- */
+.light .bg-white\/3  { background-color: rgba(0, 0, 0, 0.02); }
+.light .bg-white\/5  { background-color: rgba(0, 0, 0, 0.03); }
+.light .bg-white\/10 { background-color: rgba(0, 0, 0, 0.06); }
+
+/* Hover variants */
+.light .hover\:bg-white\/5:hover  { background-color: rgba(0, 0, 0, 0.03); }
+.light .hover\:bg-white\/10:hover { background-color: rgba(0, 0, 0, 0.06); }
+
+/* Slate-900 surfaces (form inputs, dropdowns, select options) */
+.light .bg-slate-900\/50 { background-color: rgba(255, 255, 255, 0.7); }
+.light .bg-slate-900\/95 { background-color: rgba(255, 255, 255, 0.97); }
+.light .bg-slate-900     { background-color: #f8fafc; }
+.light select option     { background-color: #f8fafc; color: #0f172a; }
+
+/* --- Borders: white-on-dark → dark-on-light --- */
+.light .border-white\/5  { border-color: rgba(0, 0, 0, 0.05); }
+.light .border-white\/10 { border-color: rgba(0, 0, 0, 0.08); }
+.light .border-white\/20 { border-color: rgba(0, 0, 0, 0.12); }
+
+/* --- Date input color-scheme (overrides [color-scheme:dark]) --- */
+.light input[type="date"] { color-scheme: light; }
+
+/* --- Opacity-dimmed history items still readable --- */
+.light .opacity-70 { opacity: 0.65; }
