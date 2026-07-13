@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSafeRedirectPath } from "@/lib/navigation/safe-redirect";
 import {
@@ -175,4 +176,35 @@ export async function signOutAction() {
   const supabase = await createSupabaseServerClient();
   await supabase.auth.signOut();
   redirect("/login");
+}
+
+export async function deleteAccountAction(
+  _prevState: AuthFormState,
+  formData: FormData,
+): Promise<AuthFormState> {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, message: "You must be signed in.", showCreateAccountCta: false };
+  }
+
+  const confirmedEmail = String(formData.get("confirmEmail") ?? "").trim().toLowerCase();
+  if (confirmedEmail !== user.email?.toLowerCase()) {
+    return {
+      success: false,
+      message: "Email does not match. Please type your email exactly.",
+      showCreateAccountCta: false,
+    };
+  }
+
+  const admin = createSupabaseAdminClient();
+  const { error } = await admin.auth.admin.deleteUser(user.id);
+
+  if (error) {
+    return { success: false, message: error.message, showCreateAccountCta: false };
+  }
+
+  await supabase.auth.signOut();
+  redirect("/login?deleted=1");
 }
