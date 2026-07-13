@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { AvatarUpload } from "@/features/profile/components/avatar-upload";
+import { DeleteAccountSection } from "@/features/profile/components/delete-account-section";
 import { EditProfileForm } from "@/features/profile/components/edit-profile-form";
 import { getAvatarPublicUrl } from "@/lib/supabase/avatar-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -52,6 +53,8 @@ export default async function ProfilePage() {
           initialUsername={profile?.username ?? ""}
         />
       </div>
+
+      <DeleteAccountSection email={user.email ?? ""} />
     </main>
   );
 }
