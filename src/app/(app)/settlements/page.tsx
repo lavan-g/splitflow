@@ -94,10 +94,20 @@ export default async function SettlementsPage() {
     })
     .filter((s): s is NonNullable<typeof s> => s !== null);
 
+  // Only settled settlements actually reduce outstanding balances.
+  const settledSettlements = (allSettlements ?? [])
+    .filter((s) => s.status === "settled")
+    .map((s) => ({
+      payer_id: s.payer_id,
+      receiver_id: s.receiver_id,
+      amount: Number(s.amount),
+    }));
+
   const peerBalanceRows = calculatePeerBalances(
     user.id,
     normalisedSplits,
     (profiles ?? []).filter((p) => groupPeerIds.includes(p.user_id)),
+    settledSettlements,
   );
 
   const balanceByPeer = Object.fromEntries(
