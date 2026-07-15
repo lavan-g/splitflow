@@ -106,4 +106,47 @@ describe("calculatePeerBalances", () => {
     expect(peers[0].userId).toBe(USER_C);
     expect(peers[0].amount).toBe(80);
   });
+
+  it("reduces the peer balance by settled settlements (used for payment auto-suggest)", () => {
+    const splits = [
+      {
+        user_id: USER_A,
+        amount: 50,
+        expense_id: "e1",
+        expenses: { paid_by: USER_B },
+      },
+    ];
+
+    const profiles = [{ user_id: USER_B, full_name: "Bob", username: "bob" }];
+
+    const settlements = [
+      { payer_id: USER_A, receiver_id: USER_B, amount: 20 },
+    ];
+
+    const peers = calculatePeerBalances(USER_A, splits, profiles, settlements);
+
+    // USER_A owed 50, already paid 20 → should still owe 30, not the full 50.
+    expect(peers.find((p) => p.userId === USER_B)?.amount).toBe(-30);
+  });
+
+  it("omits a peer entirely once fully settled", () => {
+    const splits = [
+      {
+        user_id: USER_A,
+        amount: 50,
+        expense_id: "e1",
+        expenses: { paid_by: USER_B },
+      },
+    ];
+
+    const profiles = [{ user_id: USER_B, full_name: "Bob", username: "bob" }];
+
+    const settlements = [
+      { payer_id: USER_A, receiver_id: USER_B, amount: 50 },
+    ];
+
+    const peers = calculatePeerBalances(USER_A, splits, profiles, settlements);
+
+    expect(peers.find((p) => p.userId === USER_B)).toBeUndefined();
+  });
 });
